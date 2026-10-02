@@ -1,0 +1,61 @@
+\chapter{Literature Review}
+
+\section{Legal NLP and the CUAD Benchmark}
+Applying NLP to legal text is an old ambition, but for a long time progress was blocked by a simple problem: legal annotation needs lawyers, and lawyers are expensive. CUAD \cite{hendrycks2021cuad}, released at the NeurIPS 2021 Datasets and Benchmarks track by The Atticus Project \cite{atticus2021}, changed this. It provides 510 real commercial contracts, drawn from public SEC filings, in which experienced attorneys highlighted every span belonging to 41 clause categories that matter in corporate transactions --- governing law, non-compete, liability caps, IP assignment, and so on. The dataset ships in the SQuAD format \cite{rajpurkar2016squad}: each (contract, category) pair is posed as a question over the contract text, and the annotated clause spans are the answers, complete with character offsets.
+
+The original CUAD paper treats the task as extractive question answering and reports that performance scales strongly with model size; their best results come from DeBERTa models at the extra-large scale, and even those scores are modest, which says something about how hard legal clause extraction actually is. Two properties of CUAD end up dominating any modelling effort on it. The first is severe class imbalance: some categories appear in nearly every contract, while others show up barely a dozen times in the whole corpus. The second is document length. Contracts are far longer than a transformer's input limit, so every practical system has to answer the same question first: how does a model with a 512-token window read a 50{,}000-character contract?
+
+\section{Transformer Encoders and Model Distillation}
+The transformer architecture \cite{vaswani2017attention} replaced recurrence with self-attention, and BERT-style masked-language-model pre-training \cite{devlin2019bert} established the fine-tuning recipe this thesis depends on: take a model pre-trained on large general corpora, then adapt it to a downstream task with relatively little labelled data. This transfer-learning property matters a lot here, because 510 contracts is a small dataset by deep-learning standards.
+
+Since our compute budget is a single laptop, we use DistilBERT \cite{sanh2019distilbert}, a distilled six-layer version of BERT that keeps roughly 97\% of BERT's language-understanding ability while being 40\% smaller and 60\% faster. The published CUAD baselines use much larger models, so our backbone choice trades some headline accuracy for the ability to reproduce everything on ordinary hardware. We point out this scale difference wherever we interpret our results.
+
+\section{Long-Document Strategies and Multiple-Instance Learning}
+The usual remedies for the length mismatch come in three families: (i) \emph{retrieval}, where a cheap scorer picks the few windows most likely to hold the answer and only those go to the transformer; (ii) \emph{sliding windows with aggregation}, where the model scores every window and the document-level prediction aggregates the window scores; and (iii) \emph{sparse-attention architectures} such as Longformer, which widen the input window directly.
+
+The third family deserves more than the one-line dismissal it usually gets, because ``too expensive'' is not on its own a reasoned argument. We rejected sparse attention for three specific reasons, and only the third is about cost. \textbf{First, and decisively, it would not actually solve the problem.} Longformer extends the input window to 4{,}096 tokens. At roughly four characters per token, our median contract of 33{,}143 characters is about 8{,}300 tokens and the longest is about 85{,}000 --- so a Longformer would still see only half of a typical contract and a twentieth of the largest one. Sparse attention makes the window eight times wider; it does not make it wide enough. We would still need windowing and an aggregation rule on top, which is precisely the design we ended up with anyway --- only with a backbone several times more expensive underneath it. The length problem in CUAD is an order of magnitude past what widening attention fixes. \textbf{Second, availability.} Our whole pipeline is built around distilled backbones so that it trains and serves on one laptop, and there is no distilled Longformer with the reliability and tooling support that DistilBERT has; adopting sparse attention would mean giving up the distillation that makes the rest of the project reproducible. \textbf{Third, practical cost, of two kinds.} Fine-tuning a 149M-parameter Longformer at 4{,}096 tokens is far beyond a single Apple-Silicon laptop's memory budget --- and we had already been burned here, since DeBERTa-v3 produced NaN gradients on the MPS backend (Section~\ref{sec:engineering}), which made us wary of any architecture relying on custom attention kernels on a non-CUDA device. There is also an inference-side cost: \emph{Clausify} scores every window of an uploaded contract live, and the interface is only usable if that finishes in seconds, which rules out a backbone an order of magnitude slower per window. We note that on CUDA hardware with a larger memory budget the first objection would still stand, so this is a design judgement rather than a hardware excuse.
+
+Sliding windows aggregated with a maximum correspond to the classical \emph{multiple-instance learning} (MIL) setting: the document is a bag of window instances, the bag is positive if any instance is positive, and max-pooling implements exactly that rule. MIL has a well-known weakness that our experiments ended up confirming: false-positive inflation. With dozens of windows per document, the chance that \emph{some} window fires by accident grows with document length, and precision suffers.
+
+\section{Text-to-Text Models for Summarization}
+T5 \cite{raffel2020t5} reframes every NLP task as text-to-text, which fits clause simplification naturally: legal text goes in, a plain sentence comes out. FLAN-T5 \cite{chung2022flan} instruction-tunes T5 on a large mixture of tasks, so it gives usable zero-shot behaviour from a prompt as simple as ``summarize in plain English:''. We evaluate summaries with ROUGE-L \cite{lin2004rouge}, which measures the longest common subsequence against a reference. Chapter 6 shows why this metric has to be paired with actually reading the outputs when the reference set is small.
+
+\section{Gap Addressed by This Thesis}
+Existing CUAD work stops at locating clauses. What a signer actually needs goes one step further: which clauses matter, how much, and what do they mean in plain language. This thesis adds that layer --- a per-category risk taxonomy, plain-English summaries, and a deployed application --- while also re-examining, on a strict held-out evaluation, the common assumption that a transformer must beat classical lexical methods at the document-level presence decision.
+
+Table~\ref{tab:related} places this work beside the two reference points above along the dimensions that separate them. Two differences are worth reading off it directly. The obvious one is scope: prior work ends at the span, whereas the output here is a risk-ranked, plain-English report, which is the part a non-lawyer can actually act on. The less obvious one is in the long-document column. Every system on CUAD has to make a choice about document length, but that choice is normally asserted; here it was measured before any training happened --- the retrieval ceiling of 64.0\% in Section~\ref{sec:ceiling} is what ruled retrieval out and sent us to multiple-instance learning. Note also what the backbone column costs us: our distilled models are roughly an order of magnitude smaller than CUAD's DeBERTa-v3-XL, so our absolute extraction scores are not comparable to theirs, and we do not present them as such.
+
+\begin{table}[!ht]
+\centering
+\caption{This thesis positioned against prior CUAD work.}
+\label{tab:related}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\newcolumntype{R}[1]{>{\raggedright\arraybackslash}p{#1}}
+\begin{tabular}{@{}R{22mm} R{19mm} R{19mm} R{23mm} R{17mm} R{15mm} R{17mm}@{}}
+\toprule
+\textbf{Work} & \textbf{Task scope} & \textbf{Backbone} & \textbf{Long-document handling} & \textbf{Risk assess­ment} & \textbf{Plain-language output} & \textbf{Held-out evaluation}\\
+\midrule
+Hendrycks et al.\ (CUAD, 2021) \cite{hendrycks2021cuad}
+  & Span extraction only
+  & DeBERTa-v3-XL
+  & Full-document QA (large model)
+  & No & No & Yes\\
+\addlinespace
+Standard retrieval--QA pipelines
+  & Span extraction
+  & Varies
+  & Retrieval $+$ QA (ceiling assumed)
+  & No & No & Varies\\
+\addlinespace
+\textbf{This thesis}
+  & \textbf{Presence $+$ span $+$ risk $+$ summary}
+  & DistilBERT $+$ FLAN-T5-small
+  & MIL sliding window (ceiling \emph{measured}, not assumed)
+  & \textbf{Yes} (41-category taxonomy)
+  & \textbf{Yes} (fine-tuned)
+  & \textbf{Yes} (contract-level 80/20)\\
+\bottomrule
+\end{tabular}
+\end{table}

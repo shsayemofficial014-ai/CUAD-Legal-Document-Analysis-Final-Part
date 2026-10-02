@@ -1,0 +1,70 @@
+\chapter{Introduction}
+
+\section{Background and Motivation}
+Almost everything people and businesses do together runs on contracts, but actually reading them is a luxury. A typical agreement in our dataset has a median length of about 33{,}000 characters --- roughly 5{,}000 words --- and the longest one crosses 338{,}000 characters. Somewhere inside all that text sit the provisions that really matter: who owns newly created intellectual property, whether liability has a ceiling, whether the contract quietly renews itself, whether one party is banned from competing after it ends. Getting a lawyer to review such a document takes hours and costs money that individuals and small businesses often do not have. So people sign contracts they have not fully understood, and carry risks they never saw.
+
+The Contract Understanding Atticus Dataset (CUAD) \cite{hendrycks2021cuad} was built to help automate this kind of review. It contains 510 real commercial contracts in which legal experts highlighted every clause belonging to 41 categories that matter in corporate transactions. The annotation effort alone is said to be worth around two million US dollars of attorney time. But CUAD frames the problem purely as extraction: given a category, find the clause text. Once it finds a clause labelled ``Uncapped Liability,'' it stops. There is no warning about what that clause means for the signer, no plain-language explanation, and no check of how clauses interact.
+
+Our project tries to close that gap. On top of clause detection and extraction, we add a risk taxonomy that scores every category High, Medium, or Low from the weaker party's point of view, and a summarization model that rewrites extracted clauses as single plain-English sentences. We packaged the whole pipeline into \emph{Clausify}, a web application where a user pastes or uploads a contract and gets back a risk-prioritized clause report within seconds.
+
+\section{System at a Glance}
+Before the detailed treatment in Chapter 4, Figure~\ref{fig:overview} gives the shape of the whole system in one picture. The system answers three questions about a contract in order --- \emph{what is in it}, \emph{where is it}, and \emph{what does it mean} --- and only the first two are what CUAD was built to benchmark. The third stage, shaded, is what this thesis adds.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+  node distance=6mm,
+  box/.style={draw, rounded corners=2pt, minimum height=19mm, text width=25mm,
+              align=center, font=\small, fill=blue!6},
+  new/.style={box, fill=orange!15},
+  arr/.style={-{Stealth[length=2.5mm]}, thick}
+]
+\node[box] (a) {\textbf{Contract}\\[2pt]{\scriptsize raw text}\\{\scriptsize median 33k chars}};
+\node[box, right=of a] (b) {\textbf{What is in it?}\\[2pt]{\scriptsize presence over}\\{\scriptsize 41 categories}};
+\node[box, right=of b] (c) {\textbf{Where is it?}\\[2pt]{\scriptsize exact clause}\\{\scriptsize text extracted}};
+\node[new, right=of c] (d) {\textbf{What does it mean?}\\[2pt]{\scriptsize risk level +}\\{\scriptsize plain English}};
+\draw[arr] (a) -- (b);
+\draw[arr] (b) -- (c);
+\draw[arr] (c) -- (d);
+
+\draw[decorate, decoration={brace, mirror, amplitude=4pt}]
+  ($(b.south west)+(0,-1.5mm)$) -- ($(c.south east)+(0,-1.5mm)$)
+  node[midway, below=4pt, font=\scriptsize\itshape] {CUAD's original task};
+\draw[decorate, decoration={brace, mirror, amplitude=4pt}]
+  ($(d.south west)+(0,-1.5mm)$) -- ($(d.south east)+(0,-1.5mm)$)
+  node[midway, below=4pt, font=\scriptsize\itshape] {added here};
+\end{tikzpicture}
+\caption{The system in one picture. A contract enters as raw text; the pipeline decides which of the 41 CUAD categories are present, extracts the exact clause text for each, and then --- the layer this thesis contributes --- attaches a risk level and a plain-English rewrite. Figure~\ref{fig:pipeline} expands this into the models that implement each stage, and Figure~\ref{fig:dataflow} adds the data shapes that move between them.}
+\label{fig:overview}
+\end{figure}
+
+\section{Problem Statement}
+Concretely, the thesis works on four connected problems:
+\begin{enumerate}[itemsep=2pt]
+  \item \textbf{Presence classification.} For each of the 41 CUAD categories, decide whether a given contract contains at least one clause of that category. The main technical obstacle here is length: contracts are roughly 16$\times$ longer than the input window of a standard transformer encoder.
+  \item \textbf{Span extraction.} For every category judged present, locate the exact clause text inside the contract. We formulate this as extractive question answering in the style of SQuAD \cite{rajpurkar2016squad}.
+  \item \textbf{Plain-language summarization.} Rewrite each extracted clause as one sentence that a non-lawyer can understand.
+  \item \textbf{Risk communication.} Attach a risk level and a one-line reason to every detected clause, so the output reads as an actionable report rather than a list of quotations.
+\end{enumerate}
+
+\section{Research Objectives}
+\begin{itemize}[itemsep=2pt]
+  \item Build and honestly evaluate a full three-model CUAD pipeline on consumer hardware, using an 80/20 contract-level train/test split so that every reported number comes from genuinely unseen contracts.
+  \item Check whether a windowed transformer actually beats a strong classical baseline for document-level presence classification, instead of assuming that it does.
+  \item Measure span-extraction quality with token-level F1 and exact match on the held-out test set.
+  \item Evaluate the summarizer with both ROUGE-L and a qualitative zero-shot comparison, because we found a single automatic metric can mislead.
+  \item Deploy the trained models in a working demonstration application with a risk-prioritized interface.
+\end{itemize}
+
+\section{Contributions}
+The main contributions of this work are:
+\begin{enumerate}[itemsep=2pt]
+  \item \textbf{A risk-aware CUAD framework.} Within the scope of this project, the first extension of CUAD clause detection with a complete High/Medium/Low risk taxonomy covering all 41 categories, scored from the weaker party's perspective (8 High, 22 Medium, 11 Low).
+  \item \textbf{An honest empirical result on long-document presence classification.} A full-document TF--IDF baseline (micro-F1 0.775) turned out to be surprisingly hard to beat. Our windowed DistilBERT trained with multiple-instance learning loses to it on its own (0.694), and a paired cluster bootstrap confirms that gap is real (95\% CI $[+0.063, +0.099]$). An AND-ensemble of the two, which exploits their different error patterns, nominally finishes first (0.776, accuracy 85.5\%) --- but the same bootstrap shows its margin over the baseline is indistinguishable from zero, so we report the ensemble for the balanced error profile it produces rather than for its rank.
+  \item \textbf{A methodological guardrail: measure the ceiling before training.} We show that question-guided retrieval windowing caps the attainable recall at 64\%, and we used that one measurement to reject the whole retrieval approach before spending any training time on it.
+  \item \textbf{A reproducible, laptop-scale pipeline.} All three models train on a single Apple-Silicon laptop. The split, the trained weights, and a standalone evaluation notebook are all saved, so every number in this thesis can be regenerated from disk.
+  \item \textbf{Clausify}, a working web application that runs the trained models live and presents the results grouped by risk.
+\end{enumerate}
+
+\section{Thesis Organization}
+Chapter 2 reviews the related literature. Chapter 3 describes the dataset, the preprocessing, and the exploratory analysis that shaped our design choices. Chapter 4 presents the methodology for all pipeline stages. Chapter 5 covers model training, and Chapter 6 reports the held-out test evaluation, including the confusion-matrix analysis. Chapter 7 describes the Clausify application. Chapter 8 concludes and discusses future work. The appendices contain the full 41-category risk taxonomy and the repository layout.

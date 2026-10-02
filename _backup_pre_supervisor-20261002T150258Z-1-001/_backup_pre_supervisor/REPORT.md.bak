@@ -1,0 +1,226 @@
+# CUAD Legal-Clause Pipeline — Training & Testing Report
+
+**AI-Powered Legal Document Analysis (CUAD) · BRAC University**
+Full-dataset build, EDA → three models, 80/20 train-test split with confusion matrix evaluation. Updated 2026-08-14.
+
+---
+
+## What this is
+
+A from-scratch build of the three-model CUAD pipeline on the **full dataset** (510 contracts), done interactively in a Jupyter notebook on an Apple-Silicon laptop. The dataset is split **80/20 at the contract level** — 408 contracts for training, 102 contracts for testing — ensuring no clause from a training contract leaks into the test set.
+
+The three models:
+
+| Stage | Model | Job |
+|---|---|---|
+| **2A** | Presence classifier | For each of 41 clause categories, is it present in this contract? |
+| **2B** | Span extractor | Locate the exact clause text (SQuAD-style QA). |
+| **1** | Summarizer | Rewrite a clause as one plain-English sentence. |
+
+---
+
+## Train / Test Split
+
+| | Contracts | (contract × category) rows | Positive rate |
+|---|---|---|---|
+| **Train (80%)** | 408 | 16,728 | 32.0% |
+| **Test (20%)** | 102 | 4,182 | 32.2% |
+| **Total** | 510 | 20,910 | 32.1% |
+
+The split is **contract-level** (whole contracts assigned to one side), seeded (`SEED=42`), and reused across all three models so "test" means the same 102 unseen contracts everywhere.
+
+Split files: `data/train_80.csv` and `data/test_20.csv`.
+
+---
+
+## Training Results
+
+### Stage 2A — Presence classifier
+
+**TF-IDF + Logistic Regression baseline (trained on 80%)**
+
+| Metric | Value |
+|---|---|
+| micro-F1 | 0.775 |
+| weighted-F1 | 0.777 |
+| macro-F1 (all 41 categories) | 0.572 |
+| macro-F1 (≥10 test positives, 34 cats) | 0.666 |
+
+**DistilBERT window-level classifier (MIL)**
+- 53,662 window examples (39.2% positive), subsampled to 24,000 for training
+- 2 epochs, batch 16, LR 2e-5, max length 256
+- Training loss: 0.319 → 0.261; validation loss: 0.278 → 0.257
+- Training time: ~52 min on Apple MPS
+- Standalone micro-F1 on test: **0.694**
+
+**AND-ensemble (TF-IDF + transformer, both must agree)**
+- micro-F1: **0.776** — nominally the best model, but see the significance test below: its margin over
+  the TF-IDF baseline is not statistically distinguishable from zero.
+
+### Stage 2B — Span extractor
+
+- DistilBERT-QA, 8,000 training examples (from 11,156 total train)
+- 2 epochs, batch 16, LR 3e-5, max length 320
+- Training time: ~23 min on Apple MPS
+
+### Stage 1 — Summarizer
+
+- FLAN-T5-small, 4,000 training examples (from 11,156 total train)
+- 2 epochs, batch 8, LR 3e-4
+- Training loss: 0.141 → 0.085; validation loss: 0.096 → 0.075
+- Training time: ~8 min on CPU (`use_cpu=True` to avoid MPS OOM)
+
+---
+
+## Test Results (20% held-out — 102 contracts)
+
+### Stage 2A — Presence classifier: Confusion Matrix
+
+**AND-Ensemble (TF-IDF + DistilBERT), evaluated on 4,182 (contract × category) test predictions:**
+
+|  | Predicted Absent | Predicted Present |
+|---|---|---|
+| **Actually Absent** | TN = 2,523 | FP = 311 |
+| **Actually Present** | FN = 296 | TP = 1,052 |
+
+**Metrics derived from the confusion matrix:**
+
+| Metric | Value |
+|---|---|
+| **Accuracy** | 85.49% |
+| **Precision** | 77.18% |
+| **Recall (Sensitivity)** | 78.04% |
+| **Specificity** | 89.03% |
+| **F1 Score** | 0.7761 |
+
+**Per-category F1 (top 10 and bottom 5):**
+
+| Category | Test positives | Precision | Recall | F1 |
+|---|---|---|---|---|
+| Document Name | 102 | 1.000 | 1.000 | 1.000 |
+| Parties | 101 | 0.990 | 1.000 | 0.995 |
+| Governing Law | 90 | 0.956 | 0.967 | 0.961 |
+| Agreement Date | 93 | 0.929 | 0.989 | 0.958 |
+| Expiration Date | 84 | 0.914 | 0.881 | 0.897 |
+| License Grant | 56 | 0.907 | 0.875 | 0.891 |
+| Anti-Assignment | 74 | 0.831 | 0.932 | 0.879 |
+| Effective Date | 73 | 0.831 | 0.877 | 0.853 |
+| Cap On Liability | 62 | 0.879 | 0.823 | 0.850 |
+| Insurance | 34 | 0.725 | 0.853 | 0.784 |
+| ... | | | | |
+| Most Favored Nation | 7 | 0.000 | 0.000 | 0.000 |
+| No-Solicit Of Customers | 6 | 0.000 | 0.000 | 0.000 |
+| Price Restrictions | 4 | 0.000 | 0.000 | 0.000 |
+| Source Code Escrow | 2 | 0.000 | 0.000 | 0.000 |
+| Unlimited/All-You-Can-Eat-License | 2 | 0.000 | 0.000 | 0.000 |
+
+Categories with 0.000 F1 have ≤7 test positives — too few to learn reliably with 510 total contracts.
+
+**Ensemble comparison (all on the same 20% test set):**
+
+| Model | micro-F1 |
+|---|---|
+| **Ensemble AND (both must agree)** | **0.776** |
+| TF-IDF baseline | 0.775 |
+| Ensemble AVG | 0.718 |
+| Transformer (max-pool) alone | 0.694 |
+| Ensemble OR | 0.696 |
+
+**Significance — which of these gaps are real?** A cluster bootstrap over the 102 test contracts
+(resampling contracts, not the correlated within-contract cells; 10,000 resamples,
+`analysis/bootstrap_ci.py`):
+
+| Comparison | Difference | 95% CI | P(>0) | Verdict |
+|---|---|---|---|---|
+| AND-ensemble vs TF-IDF baseline | +0.0014 | [−0.0068, +0.0089] | 0.626 | **tie** |
+| TF-IDF baseline vs transformer | +0.0805 | [+0.0626, +0.0992] | 1.000 | **real** |
+| AND-ensemble vs transformer | +0.0818 | [+0.0654, +0.0987] | 1.000 | **real** |
+
+So the headline should be read carefully: the ensemble and the baseline are **tied** on this test set,
+while the windowed transformer's deficit against both is large and significant. The ensemble is still
+the model we deploy, but for its balanced error profile (precision 77.18% / recall 78.04%) rather than
+for its rank.
+
+### Stage 2B — Span extractor test results
+
+Evaluated on **2,667 test examples** (answer-bearing windows from the 102 test contracts):
+
+| Metric | Score |
+|---|---|
+| **token-F1** | **0.763** |
+| Exact Match | 35.5% |
+| Overlap (F1 ≥ 0.5) | 82.7% |
+
+### Stage 1 — Summarizer test results
+
+Evaluated on **150 test clauses** (sampled from the 102 test contracts):
+
+| Metric | Score |
+|---|---|
+| **ROUGE-L** | **0.775** |
+
+**Zero-shot vs fine-tuned comparison** (same clauses):
+
+| | Behavior |
+|---|---|
+| **Fine-tuned** | Reproduces the gold template verbatim — clean plain-English, but category-generic (ignores the specific clause). Effectively classification. |
+| **Zero-shot FLAN-T5** | Reads each clause but echoes the legalese (copies contract text) — clause-specific but un-simplified. |
+
+---
+
+## Summary scorecard
+
+| Stage | Model | Train split | Test split | Test metric | Score |
+|---|---|---|---|---|---|
+| **2A Presence** | AND-ensemble (TF-IDF + DistilBERT) | 408 contracts (80%) | 102 contracts (20%) | micro-F1 | **0.776** |
+| **2A Presence** | AND-ensemble | 408 contracts (80%) | 102 contracts (20%) | Accuracy | **85.49%** |
+| **2A Presence** | AND-ensemble | 408 contracts (80%) | 102 contracts (20%) | Precision | **77.18%** |
+| **2A Presence** | AND-ensemble | 408 contracts (80%) | 102 contracts (20%) | Recall | **78.04%** |
+| **2B Span** | DistilBERT-QA | 408 contracts (80%) | 102 contracts (20%) | token-F1 | **0.763** |
+| **2B Span** | DistilBERT-QA | 408 contracts (80%) | 102 contracts (20%) | Exact Match | **35.5%** |
+| **1 Summarizer** | FLAN-T5-small | 408 contracts (80%) | 102 contracts (20%) | ROUGE-L | **0.775** |
+
+---
+
+## Key design decisions
+
+- **80/20 contract-level split** — whole contracts assigned to train or test; no clause leaks across the boundary; seeded and reused across all three models.
+- **Strong baseline first** — TF-IDF on the whole document (no length limit) sets the bar; every transformer result is judged against it.
+- **Measure the ceiling before training** — retrieval hit-rate (64%) told us a windowed transformer's recall was capped below the baseline, so we pivoted to max-pool MIL.
+- **Parameter-free ensemble** (AND/OR/AVG rules) — nothing tuned on the test set.
+- **Quantify small margins instead of hedging about them** — a bootstrap CI turned "the margin is small
+  so we do not lean on it" into a measured statement that it is a tie.
+- **Leakage discipline** — gold offsets label training windows but are never used to build inputs or pick inference windows; retrieval uses only the category/question.
+- **Honest dual eval for the summarizer** — ROUGE-L and a qualitative comparison, because ROUGE alone is misleading with only 41 targets.
+
+---
+
+## Engineering notes
+
+- **Apple MPS, no CUDA.** `torch 2.8`, `transformers 5.x`. DistilBERT + FLAN-T5-small throughout (DeBERTa-v3 unstable on MPS).
+- **MPS memory does not release in-process.** Summarizer trained on CPU with `use_cpu=True` to avoid OOM.
+- **`transformers 5.x` API:** `processing_class=…` (not `tokenizer=…`); logits cast to fp32; `fp16/bf16=False`, `dataloader_pin_memory=False`.
+
+---
+
+## Files
+
+```
+final project p3/
+├── README.md                 — start here
+├── thesis/                   — the B.Sc. thesis (LaTeX source + main.pdf)
+├── PROJECT_REPORT.md / .pdf  — complete step-by-step report
+├── REPORT.md / .pdf          — this report
+├── METHODOLOGY.md / .pdf     — design decisions document
+├── analysis/                 — scripts generating the reported statistics
+├── data/
+│   ├── train_80.csv          — 80% training split (16,728 rows, 408 contracts)
+│   └── test_20.csv           — 20% test split (4,182 rows, 102 contracts)
+└── notebooks/
+    ├── README.md             — cell-by-cell notebook guide
+    ├── train.ipynb           — training half
+    ├── test.ipynb            — testing half
+    ├── eda.ipynb             — original combined notebook
+    ├── artifacts/            — split + fitted TF-IDF baseline
+    └── outputs/              — trained presence, span and summarizer models
+```

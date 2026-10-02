@@ -1,0 +1,19 @@
+\chapter{Conclusion and Future Work}
+
+\section{Conclusion}
+We set out to turn CUAD's clause-extraction benchmark into something a contract signer can actually use: a system that finds the clauses, says how risky they are, and explains them in plain English. On a strict contract-level 80/20 split --- 408 contracts for training, 102 never-seen contracts for testing --- the pipeline we delivered reaches 85.5\% accuracy (micro-F1 0.776, precision 77.2\%, recall 78.0\%, specificity 89.0\%) for clause presence, token-F1 0.763 for exact clause extraction, and ROUGE-L 0.775 for plain-language summarization. Every one of those numbers can be regenerated from saved artifacts by a standalone evaluation notebook. The models run live inside Clausify, a web application that turns raw contract text into a risk-prioritized report in seconds.
+
+Beyond the numbers, three lessons from this work seem likely to generalize. First, for document-level presence decisions over formulaic text, a full-document lexical baseline is a serious competitor: our windowed transformer lost to it outright by a margin a cluster bootstrap confirms is real, and an ensemble that uses the transformer as a precision filter only drew level with it rather than clearly beating it. Second, feasibility ceilings should be measured before models are trained --- a retrieval hit-rate check that took under a minute (64\%) killed an architecture that would otherwise have burned hours of training before failing. Third, automatic metrics need qualitative backup: our summarizer's excellent ROUGE-L turned out to measure template reproduction, something we only saw by reading the outputs side by side, and we consider reporting that honestly worth more than the inflated headline.
+
+\section{Limitations}
+We downsized the backbone models (DistilBERT, FLAN-T5-small) to fit a laptop compute budget, so our absolute scores understate what the same method would achieve with larger backbones on CUDA hardware. The rare tail of CUAD ($\leq$13 positive contracts for several categories) is effectively unlearnable at this dataset size, and our per-category results reflect that. The span evaluation measures extraction within answer-bearing windows, not the heavier full-document precision-at-recall benchmark. The summarizer reproduces templates rather than truly abstracting. And the risk taxonomy is per-category rather than per-instance --- it flags a category's typical danger, not the severity of the specific wording in front of the user.
+
+\section{Future Work}
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{Scale the backbones.} Re-run the unchanged pipeline with DeBERTa-v3-base/large and FLAN-T5-base on CUDA hardware to close the gap to the published CUAD baselines.
+  \item \textbf{Full-document span benchmark.} Implement the document-stride ranked evaluation so we can report precision at 80\% recall and compare with the CUAD paper apples-to-apples.
+  \item \textbf{A genuinely abstractive summarizer.} Grow the 41-template seed into a clause-diverse target set (for example, reviewed LLM-drafted summaries) and re-fine-tune --- the path from template classification to real simplification.
+  \item \textbf{Cross-clause conflict detection.} Bring the rule engine designed in our pre-thesis phase (for example, \emph{Exclusivity} vs.\ \emph{Most Favored Nation}) into the deployed application.
+  \item \textbf{Instance-level risk.} Move from per-category risk to per-clause severity by reading the extracted span itself --- a cap's amount, a non-compete's duration.
+  \item \textbf{Bangladeshi contracts.} Adapt the pipeline to local contract language and law, which is the deployment context that motivated this work in the first place.
+\end{itemize}

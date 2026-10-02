@@ -1,0 +1,58 @@
+\chapter{Dataset and Exploratory Analysis}
+
+\section{Data Source}
+All experiments use the official Atticus Project release of CUAD, obtained from the Hugging Face hub (\texttt{theatticusproject/cuad}). One practical discovery is worth recording here: the repository's default \texttt{load\_dataset()} configuration exposes only the 511 raw contract PDFs, which cannot be trained on. The annotated data actually lives in two files inside the repository, and each one plays a different role in our pipeline:
+\begin{itemize}[itemsep=2pt]
+  \item \texttt{master\_clauses.csv} --- an 83-column wide table with one row per contract, which we used for exploratory analysis and for building labels;
+  \item \texttt{CUAD\_v1.json} --- the SQuAD-format file with the full contract text and character-level answer offsets, which we used for span-extraction training and full-document context.
+\end{itemize}
+
+\section{Preprocessing: the Wide-to-Long Melt}
+The CSV is wide: 41 categories $\times$ (a clause-text column plus an answer column), with a filename column in front. Turning it into a long table of (contract, category) rows forced two decisions that were not obvious at first:
+
+\textbf{Pair columns by position, not by name.} The header \texttt{Notice Period To Terminate Renewal- Answer} contains an inconsistent space, which silently breaks any string matching between a category column and its answer column. Pairing by column position (clause text at odd indices, answer at even) survives typos like this.
+
+\textbf{Define presence from the clause-text list, not the Yes/No answer.} Each clause-text cell holds a stringified Python list, either \texttt{'[]'} or \texttt{"['clause', ...]"}. We call a category \emph{present} when this list is non-empty. This rule works the same way across the eight entity-style categories (dates, party names) whose answer column holds a value instead of Yes/No, and it hands us the clause spans as a side effect.
+
+The melt produces $510 \times 41 = 20{,}910$ labelled (contract, category) rows, of which 32.1\% are positive.
+
+\section{Exploratory Findings}
+\label{sec:eda}
+Four properties of the data ended up shaping every design decision that followed:
+
+\begin{enumerate}[itemsep=2pt]
+  \item \textbf{Severe class imbalance.} Per-category positive rates run from \emph{Document Name} at 100\% and \emph{Parties} at 99.8\% down to \emph{Source Code Escrow} at 2.5\% and \emph{Price Restrictions} at 2.9\%. The median category is present in roughly 23\% of contracts.
+  \item \textbf{The rare tail is nearly few-shot.} \emph{Source Code Escrow} has only 13 positive contracts in the entire corpus. No model learns categories like that reliably, and per-category scores on this tail are mostly noise. We carry this caveat through the results chapter.
+  \item \textbf{Contracts are long.} Median 33{,}143 characters (about 5{,}000 words), maximum 338{,}211 characters --- roughly 16$\times$ a transformer's effective input window. This is the central modelling tension of the whole thesis.
+  \item \textbf{Clauses are short.} The median annotated clause is 196 characters (90th percentile 587, 99th percentile 1{,}330). So a clause fits easily inside a single window; the hard part is finding it inside a very long document.
+\end{enumerate}
+
+It is worth being upfront that 510 contracts is the entire dataset. Its annotations reportedly cost about \$2M of attorney time, so it cannot simply be grown. Three consequences follow: transfer learning from pre-trained models is mandatory; overfitting is the main enemy, so all our conclusions rest on held-out numbers; and the train/test boundary has to be drawn at the contract level.
+
+\section{The 80/20 Train/Test Split}
+Following the evaluation protocol set by our supervisor, we split the dataset \textbf{80/20 at the contract level}: whole contracts go to one side or the other, so no clause from a training contract can leak into the test set. The split is generated with a fixed seed (42) and \emph{reused identically by all three models}, which means ``test'' always refers to the same 102 unseen contracts. Table~\ref{tab:split} summarizes the split; the nearly identical positive rates on both sides confirm it is balanced. We exported the two sides as \texttt{data/train\_80.csv} and \texttt{data/test\_20.csv} so the split itself is reproducible.
+
+\begin{table}[ht]
+\centering
+\caption{The contract-level 80/20 train/test split.}
+\label{tab:split}
+\begin{tabular}{lrrr}
+\toprule
+ & \textbf{Contracts} & \textbf{(Contract, category) rows} & \textbf{Positive rate}\\
+\midrule
+Train (80\%) & 408 & 16{,}728 & 32.0\%\\
+Test (20\%)  & 102 & 4{,}182  & 32.2\%\\
+\midrule
+Total        & 510 & 20{,}910 & 32.1\%\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The aggregate positive rates in Table~\ref{tab:split} are almost identical (32.0\% vs.\ 32.2\%), but a single pair of percentages can hide a badly skewed split --- two sides can agree overall while disagreeing sharply category by category. Figure~\ref{fig:splitdist} therefore compares the two sides for all 41 categories at once. The profiles track each other closely across the whole frequency range (Pearson $r = 0.986$, mean absolute difference 3.4 percentage points). The visible exception is \emph{Termination For Convenience}, which appears in 47.1\% of test contracts against 33.1\% of training contracts, a 14.0-point gap; the other outliers are all in the rare tail, where a shift of one or two contracts moves the percentage several points on its own. Since the split was drawn once at random and never re-drawn to look better, we report these gaps rather than tune them away --- but they are worth carrying into Chapter 6, because a category over-represented in the test set carries more weight in the micro-averaged score than its training frequency would suggest.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{split_distribution.png}
+\caption{Per-category positive rate in the training and test halves of the contract-level split, sorted by training frequency. The two distributions overlap closely across all 41 categories, which supports the balance claim in Table~\ref{tab:split} far more directly than the aggregate rates alone.}
+\label{fig:splitdist}
+\end{figure}

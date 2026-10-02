@@ -1,0 +1,51 @@
+\chapter{Clausify: the Demonstration Application}
+
+\section{Purpose and Design}
+The final deliverable is \emph{Clausify}, a Streamlit web application that runs the two trained transformer models live on any contract the user provides and presents the findings as a risk-prioritized report --- the pipeline of Figure~\ref{fig:pipeline}, made usable. The design goal is simple: a non-lawyer should see the ``watch out before signing'' items first. Detected clauses are grouped \textcolor{riskhigh}{\textbf{High}} $\rightarrow$ \textcolor{riskmed}{\textbf{Medium}} $\rightarrow$ \textcolor{risklow}{\textbf{Low}} and sorted by model confidence within each group.
+
+\section{User Workflow}
+\begin{enumerate}[itemsep=2pt]
+  \item \textbf{Add a contract.} A toggle offers two input modes --- paste the contract text directly, or upload a \texttt{.txt} file (Figure~\ref{fig:apphome}). A confidence-threshold slider (default 0.50) controls how conservative detection should be.
+  \item \textbf{Analyze.} One click runs both models end-to-end; a progress bar tracks the presence scan across the 41 categories.
+  \item \textbf{Read the report.} A summary bar counts the detected clauses per risk level (Figure~\ref{fig:appresults}), and below it each detected clause appears as a card.
+\end{enumerate}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{app_home.png}
+\caption{The Clausify input screen. The toggle selects between pasting contract text and uploading a file; the slider sets the presence-confidence threshold.}
+\label{fig:apphome}
+\end{figure}
+
+Each clause card shows four things: the category name with a colour-coded risk badge; the one-line plain-English reason that category carries its risk (from the taxonomy in Appendix~\ref{app:taxonomy}); the presence model's confidence drawn as a bar; and the exact clause text the span model extracted, quoted from the user's own contract (Figure~\ref{fig:appcards}). An expandable table lists all 41 categories with their risk level and raw presence score, so nothing the models computed is hidden from the user.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{app_results.png}
+\caption{Results view on the synthetic test contract: the risk summary bar reports 7 High, 15 Medium, and 8 Low risk clauses (30 of the 41 categories detected), and the risk-prioritized report begins with the High-risk group.}
+\label{fig:appresults}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{app_cards.png}
+\caption{High-risk clause cards. Each card combines the risk badge and reason, Model 1's presence confidence bar, and the exact clause text extracted by Model 2 from the user's contract --- here \emph{Uncapped Liability}, \emph{Non-Compete}, \emph{Minimum Commitment}, and \emph{Irrevocable or Perpetual License}.}
+\label{fig:appcards}
+\end{figure}
+
+\section{How the Models Run Inside the App}
+The application reproduces the inference path from training exactly:
+\begin{enumerate}[itemsep=2pt]
+  \item \textbf{Windowing.} The contract is cut into 2{,}000-character windows with a 1{,}500-character stride --- the same scheme used in training --- capped at 30 windows so very long documents stay responsive.
+  \item \textbf{Model 1 --- presence.} For each of the 41 categories, the exact CUAD question the model was trained on is paired with every window and scored by the window-level DistilBERT. The per-category document score is the max-pooled window probability; categories above the threshold are reported present, and the best-scoring window is remembered.
+  \item \textbf{Model 2 --- span.} For each detected category, the DistilBERT-QA model runs over that best window (in 1{,}200-character focus chunks) and returns the highest-confidence span --- the clause text shown on the card.
+  \item \textbf{Risk layer.} The detected category is looked up in the fixed 8/22/11 taxonomy for its level and reason.
+\end{enumerate}
+
+All inference runs on CPU so the app works on any machine; a contract takes roughly 5--15 seconds once the models are loaded. The app loads the actual trained checkpoints saved by the training pipeline (\texttt{presence\_mil/final} and \texttt{span/final}), and a single environment variable redirects it if the models are moved.
+
+\section{Implementation Notes}
+The interface is a single-page Streamlit application (\texttt{app.py}) sitting on a small inference module (\texttt{model\_utils.py}) that owns model loading, windowing, max-pooling, span extraction, and the risk table. Two test contracts ship with the app: a genuine CUAD contract, and a synthetic ``Master Software License and Distribution Agreement'' that we wrote specifically to exercise a wide spread of the 41 categories. On that synthetic contract the app detects clauses across all three risk bands and puts \emph{Uncapped Liability}, \emph{IP Ownership Assignment}, \emph{Exclusivity}, and \emph{Liquidated Damages} at the top of the report --- exactly the before-you-sign warnings the design aims for.
+
+\section{Honest Limitations of the Demo}
+For interactive latency the app runs the transformer presence model alone rather than the AND-ensemble (the TF--IDF leg needs the fitted vectorizer, which the packaged demo leaves out). As Chapter 6 showed, the transformer alone over-detects slightly; the user can counter this by raising the threshold slider. Span boundaries inherit the distilled backbone's approximate edges. And the risk levels are per-category, not per-instance: the taxonomy flags that a \emph{Cap on Liability} clause deserves attention, but it does not read whether this particular cap is generous or punishing. All of this is stated in the app itself. What the demonstration does establish is that both models generalize to contracts they have never seen, and that the output can be presented in a form a layperson can act on.

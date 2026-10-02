@@ -1,0 +1,89 @@
+\chapter{Full Risk Taxonomy}
+\label{app:taxonomy}
+
+The complete 41-category risk taxonomy (8 High, 22 Medium, 11 Low), scored from the weaker party's perspective, with the one-line reason shown to users in the Clausify application.
+
+\begin{longtable}{p{4.6cm} c p{7.6cm}}
+\caption{The 41 CUAD clause categories with risk level and reason.}\\
+\toprule
+\textbf{Category} & \textbf{Risk} & \textbf{Reason}\\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Category} & \textbf{Risk} & \textbf{Reason}\\
+\midrule
+\endhead
+Non-Compete & \textcolor{riskhigh}{High} & Limits your future income and freedom to work.\\
+Uncapped Liability & \textcolor{riskhigh}{High} & Unlimited damages --- no ceiling on what you can owe.\\
+IP Ownership Assignment & \textcolor{riskhigh}{High} & You lose ownership of a core asset for good.\\
+Exclusivity & \textcolor{riskhigh}{High} & Locks you to a single source or buyer.\\
+Most Favored Nation & \textcolor{riskhigh}{High} & You must always give the other side your best terms.\\
+Liquidated Damages & \textcolor{riskhigh}{High} & Fixed penalties trigger automatically on breach.\\
+Irrevocable or Perpetual License & \textcolor{riskhigh}{High} & A grant you can never take back.\\
+Minimum Commitment & \textcolor{riskhigh}{High} & You are forced to buy or deliver a minimum amount.\\
+\midrule
+Renewal Term & \textcolor{riskmed}{Medium} & Auto-renewal can extend the contract unexpectedly.\\
+Notice Period to Terminate Renewal & \textcolor{riskmed}{Medium} & Miss the window and you are locked in for another term.\\
+Competitive Restriction Exception & \textcolor{riskmed}{Medium} & Carve-outs to competitive limits --- read carefully.\\
+No-Solicit of Customers & \textcolor{riskmed}{Medium} & Restricts approaching the other side's customers.\\
+No-Solicit of Employees & \textcolor{riskmed}{Medium} & Restricts hiring the other side's staff.\\
+Non-Disparagement & \textcolor{riskmed}{Medium} & Limits what you can publicly say.\\
+Termination for Convenience & \textcolor{riskmed}{Medium} & The other side can walk away with notice.\\
+ROFR / ROFO / ROFN & \textcolor{riskmed}{Medium} & First-refusal rights can constrain your options.\\
+Change of Control & \textcolor{riskmed}{Medium} & A sale or merger may trigger termination.\\
+Anti-Assignment & \textcolor{riskmed}{Medium} & You cannot transfer the contract without consent.\\
+Revenue/Profit Sharing & \textcolor{riskmed}{Medium} & You must share a slice of revenue or profit.\\
+Price Restrictions & \textcolor{riskmed}{Medium} & Limits what prices you may set or change.\\
+Volume Restriction & \textcolor{riskmed}{Medium} & Caps how much you can sell or distribute.\\
+Joint IP Ownership & \textcolor{riskmed}{Medium} & IP is co-owned --- control is shared, not sole.\\
+Non-Transferable License & \textcolor{riskmed}{Medium} & The licence cannot be passed on.\\
+Affiliate License (Licensor) & \textcolor{riskmed}{Medium} & Licensor's affiliates are pulled into the grant.\\
+Unlimited / All-You-Can-Eat License & \textcolor{riskmed}{Medium} & Broad, unlimited licence scope --- check who benefits.\\
+Source Code Escrow & \textcolor{riskmed}{Medium} & Source is held by a third party under conditions.\\
+Post-Termination Services & \textcolor{riskmed}{Medium} & Obligations continue after the contract ends.\\
+Audit Rights & \textcolor{riskmed}{Medium} & The other side can inspect your records.\\
+Cap on Liability & \textcolor{riskmed}{Medium} & Caps recovery --- may under-compensate real losses.\\
+Covenant Not to Sue & \textcolor{riskmed}{Medium} & You waive the right to sue over listed matters.\\
+\midrule
+Document Name & \textcolor{risklow}{Low} & Identifies the agreement --- informational.\\
+Parties & \textcolor{risklow}{Low} & Names who is signing --- informational.\\
+Agreement Date & \textcolor{risklow}{Low} & The signing date --- informational.\\
+Effective Date & \textcolor{risklow}{Low} & When terms start --- informational.\\
+Expiration Date & \textcolor{risklow}{Low} & When the contract ends --- informational.\\
+Governing Law & \textcolor{risklow}{Low} & Which jurisdiction's law applies --- neutral.\\
+License Grant & \textcolor{risklow}{Low} & You receive usage rights --- generally favorable.\\
+Warranty Duration & \textcolor{risklow}{Low} & States how long the warranty protects you.\\
+Insurance & \textcolor{risklow}{Low} & Required coverage --- a protection.\\
+Affiliate License (Licensee) & \textcolor{risklow}{Low} & Extends rights to your affiliates --- favorable.\\
+Third Party Beneficiary & \textcolor{risklow}{Low} & Names an outside beneficiary --- informational.\\
+\bottomrule
+\end{longtable}
+
+\chapter{Repository and Artifact Layout}
+\label{app:repo}
+
+\begin{verbatim}
+final project p3/                     -- research deliverable
+|- PROJECT_REPORT.md / .pdf           -- step-by-step project report
+|- REPORT.md / .pdf                   -- findings & caveats report
+|- METHODOLOGY.md / .pdf              -- design-decision record
+|- data/
+|  |- train_80.csv                    -- 80% split (16,728 rows, 408 contracts)
+|  |- test_20.csv                     -- 20% split (4,182 rows, 102 contracts)
+|- notebooks/
+|  |- train.ipynb                     -- training notebook (EDA -> 3 models)
+|  |- test.ipynb                      -- STANDALONE evaluation notebook
+|  |- eda.ipynb                       -- original combined notebook
+|  |- build_artifacts.py              -- retrains & saves all artifacts
+|  |- artifacts/                      -- split.json, baseline.pkl
+|  |- outputs/                        -- three trained model checkpoints
+|- thesis/                            -- this document (LaTeX)
+
+final project app p3/                 -- Clausify demo application
+|- app.py                             -- Streamlit UI
+|- model_utils.py                     -- inference + risk taxonomy
+|- cat_questions.json                 -- 41 category->question strings
+|- sample_contract.txt                -- real CUAD test contract
+|- test_contract.txt                  -- synthetic multi-clause contract
+|- APP_REPORT.md / .pdf               -- application report
+\end{verbatim}
