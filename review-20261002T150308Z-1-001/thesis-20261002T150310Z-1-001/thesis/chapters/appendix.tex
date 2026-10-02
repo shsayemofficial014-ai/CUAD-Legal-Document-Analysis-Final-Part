@@ -1,0 +1,194 @@
+\chapter{Full Risk Taxonomy}
+\label{app:taxonomy}
+
+The complete 41-category risk taxonomy (8 High, 22 Medium, 11 Low), scored from the weaker party's perspective, with the one-line reason shown to users in the Clausify application.
+
+\begin{longtable}{p{4.6cm} c p{7.6cm}}
+\caption{The 41 CUAD clause categories with risk level and reason.}\\
+\toprule
+\textbf{Category} & \textbf{Risk} & \textbf{Reason}\\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Category} & \textbf{Risk} & \textbf{Reason}\\
+\midrule
+\endhead
+Non-Compete & \textcolor{riskhigh}{High} & Limits your future income and freedom to work.\\
+Uncapped Liability & \textcolor{riskhigh}{High} & Unlimited damages --- no ceiling on what you can owe.\\
+IP Ownership Assignment & \textcolor{riskhigh}{High} & You lose ownership of a core asset for good.\\
+Exclusivity & \textcolor{riskhigh}{High} & Locks you to a single source or buyer.\\
+Most Favored Nation & \textcolor{riskhigh}{High} & You must always give the other side your best terms.\\
+Liquidated Damages & \textcolor{riskhigh}{High} & Fixed penalties trigger automatically on breach.\\
+Irrevocable or Perpetual License & \textcolor{riskhigh}{High} & A grant you can never take back.\\
+Minimum Commitment & \textcolor{riskhigh}{High} & You are forced to buy or deliver a minimum amount.\\
+\midrule
+Renewal Term & \textcolor{riskmed}{Medium} & Auto-renewal can extend the contract unexpectedly.\\
+Notice Period to Terminate Renewal & \textcolor{riskmed}{Medium} & Miss the window and you are locked in for another term.\\
+Competitive Restriction Exception & \textcolor{riskmed}{Medium} & Carve-outs to competitive limits --- read carefully.\\
+No-Solicit of Customers & \textcolor{riskmed}{Medium} & Restricts approaching the other side's customers.\\
+No-Solicit of Employees & \textcolor{riskmed}{Medium} & Restricts hiring the other side's staff.\\
+Non-Disparagement & \textcolor{riskmed}{Medium} & Limits what you can publicly say.\\
+Termination for Convenience & \textcolor{riskmed}{Medium} & The other side can walk away with notice.\\
+ROFR / ROFO / ROFN & \textcolor{riskmed}{Medium} & First-refusal rights can constrain your options.\\
+Change of Control & \textcolor{riskmed}{Medium} & A sale or merger may trigger termination.\\
+Anti-Assignment & \textcolor{riskmed}{Medium} & You cannot transfer the contract without consent.\\
+Revenue/Profit Sharing & \textcolor{riskmed}{Medium} & You must share a slice of revenue or profit.\\
+Price Restrictions & \textcolor{riskmed}{Medium} & Limits what prices you may set or change.\\
+Volume Restriction & \textcolor{riskmed}{Medium} & Caps how much you can sell or distribute.\\
+Joint IP Ownership & \textcolor{riskmed}{Medium} & IP is co-owned --- control is shared, not sole.\\
+Non-Transferable License & \textcolor{riskmed}{Medium} & The licence cannot be passed on.\\
+Affiliate License (Licensor) & \textcolor{riskmed}{Medium} & Licensor's affiliates are pulled into the grant.\\
+Unlimited / All-You-Can-Eat License & \textcolor{riskmed}{Medium} & Broad, unlimited licence scope --- check who benefits.\\
+Source Code Escrow & \textcolor{riskmed}{Medium} & Source is held by a third party under conditions.\\
+Post-Termination Services & \textcolor{riskmed}{Medium} & Obligations continue after the contract ends.\\
+Audit Rights & \textcolor{riskmed}{Medium} & The other side can inspect your records.\\
+Cap on Liability & \textcolor{riskmed}{Medium} & Caps recovery --- may under-compensate real losses.\\
+Covenant Not to Sue & \textcolor{riskmed}{Medium} & You waive the right to sue over listed matters.\\
+\midrule
+Document Name & \textcolor{risklow}{Low} & Identifies the agreement --- informational.\\
+Parties & \textcolor{risklow}{Low} & Names who is signing --- informational.\\
+Agreement Date & \textcolor{risklow}{Low} & The signing date --- informational.\\
+Effective Date & \textcolor{risklow}{Low} & When terms start --- informational.\\
+Expiration Date & \textcolor{risklow}{Low} & When the contract ends --- informational.\\
+Governing Law & \textcolor{risklow}{Low} & Which jurisdiction's law applies --- neutral.\\
+License Grant & \textcolor{risklow}{Low} & You receive usage rights --- generally favorable.\\
+Warranty Duration & \textcolor{risklow}{Low} & States how long the warranty protects you.\\
+Insurance & \textcolor{risklow}{Low} & Required coverage --- a protection.\\
+Affiliate License (Licensee) & \textcolor{risklow}{Low} & Extends rights to your affiliates --- favorable.\\
+Third Party Beneficiary & \textcolor{risklow}{Low} & Names an outside beneficiary --- informational.\\
+\bottomrule
+\end{longtable}
+
+\chapter{Reproducibility Checklist}
+\label{app:repro}
+
+Everything below describes the environment in which every number in this thesis was produced. The purpose is that a reader with the repository and this appendix can regenerate any table without asking us a question.
+
+\section*{Environment}
+\begin{tabular}{p{4.5cm} p{9cm}}
+\toprule
+Python & 3.13.5\\
+Operating system & macOS 26.5.2, arm64\\
+Hardware & Apple M4, 10 cores (4 performance / 6 efficiency), 16\,GB unified memory\\
+Accelerator & Metal Performance Shaders (MPS); no CUDA at any point\\
+\midrule
+\texttt{torch} & 2.8.0\\
+\texttt{transformers} & 5.12.1\\
+\texttt{datasets} & 5.0.0\\
+\texttt{scikit-learn} & 1.6.1\\
+\texttt{numpy} & 2.1.3\\
+\texttt{pandas} & 2.2.3\\
+\texttt{rouge\_score} & installed (ROUGE-L is additionally implemented inline; see below)\\
+\texttt{matplotlib} & figures only\\
+\bottomrule
+\end{tabular}
+
+\section*{Data}
+\begin{tabular}{p{4.5cm} p{9cm}}
+\toprule
+Dataset & CUAD v1, Hugging Face \texttt{theatticusproject/cuad}\\
+Files used & \texttt{CUAD\_v1/CUAD\_v1.json} (contexts, character offsets); \texttt{CUAD\_v1/master\_clauses.csv} (exploratory analysis only)\\
+Contracts & 510; 41 categories; 20{,}910 (contract, category) rows\\
+Note & The repository's default \texttt{load\_dataset()} configuration exposes only the raw PDFs and cannot be trained on (Section~3.1).\\
+\bottomrule
+\end{tabular}
+
+\section*{Seeds and splits}
+\begin{itemize}[itemsep=2pt]
+  \item Global seed 42 for the split, all three trainings, and every bootstrap.
+  \item The split is \emph{drawn once} from \texttt{numpy.random.default\_rng(42).permutation}, saved to \texttt{artifacts/split.json}, and loaded from disk by every subsequent script --- so no script re-derives it.
+  \item Additional presence-model seeds 43 and 44 (Section~\ref{sec:seeds}); dataset-split seeds 0--19 for Section~\ref{sec:splitvar}.
+  \item Bootstrap: 10{,}000 resamples, \texttt{default\_rng(42)}, resampling unit = contract.
+\end{itemize}
+
+\section*{Artifact fingerprints}
+First 16 hex characters of the SHA-256 of each artifact, so a reader can confirm they hold the same files:
+
+\begin{tabular}{p{7cm} p{6cm}}
+\toprule
+\texttt{CUAD\_v1.json} & \texttt{ed0b77d85bdf4014}\\
+\texttt{artifacts/split.json} & \texttt{177e2ef48dfab9cd}\\
+\texttt{artifacts/baseline.pkl} & \texttt{1c26214794393bdb}\\
+\texttt{outputs/presence\_mil/final/model.safetensors} & \texttt{4b1aec3cc43aeea9}\\
+\texttt{outputs/span/final/model.safetensors} & \texttt{f97ba9b172beac42}\\
+\texttt{outputs/summarizer/final/model.safetensors} & \texttt{9fcb6bdf777d033c}\\
+\bottomrule
+\end{tabular}
+
+\section*{Commands, and which table each regenerates}
+
+\begin{tabular}{p{6.3cm} p{7.4cm}}
+\toprule
+\textbf{Command} & \textbf{Regenerates}\\
+\midrule
+\texttt{python notebooks/build\_artifacts.py} & All three checkpoints, the split and the fitted baseline ($\approx$85 min)\\
+\texttt{jupyter run notebooks/test.ipynb} & Tables 6.1--6.5 (presence, confusion matrix, span, summarizer)\\
+\texttt{python analysis/bootstrap\_ci.py} & Table 6.2 (cluster bootstrap)\\
+\texttt{python analysis/presence\_run.py -{}-tag full53k -{}-max-train 0} & Table~\ref{tab:budget} (full-data control, $\approx$140 min train $+$ 50 min eval)\\
+\texttt{python analysis/presence\_run.py -{}-tag s43 -{}-seed 43} & Table~\ref{tab:seeds} (seed variance; repeat for 44)\\
+\texttt{python analysis/compare\_runs.py} & Tables~\ref{tab:budget} and~\ref{tab:seeds} contrasts\\
+\texttt{python analysis/span\_ci.py} & Table~\ref{tab:span} (span intervals)\\
+\texttt{python analysis/rare\_tail.py} & Table~\ref{tab:raretail}\\
+\texttt{python analysis/risk\_threshold\_calib.py} & Table~\ref{tab:riskeval}, Figure~\ref{fig:threshcal}\\
+\texttt{python analysis/split\_variance.py} & Table~\ref{tab:splitvar}\\
+\texttt{python analysis/e2e.py AND} & Tables~\ref{tab:e2e} and~\ref{tab:e2eattr}\\
+\texttt{python analysis/summ\_pilot.py} & Table~\ref{tab:sumeval}\\
+\texttt{python analysis/error\_examples.py} & Table~\ref{tab:errors}\\
+\texttt{python analysis/lf\_one.py longformer 4096 1 train} & Table~\ref{tab:lfbench} (one row per invocation)\\
+\texttt{python analysis/app\_bench.py} & Table~\ref{tab:appbench}\\
+\texttt{python analysis/verify\_numbers.py} & Cross-checks all 84 reported figures and 17 derived
+comparisons in Chapters 5--8 against the analysis artifacts; prints \texttt{0 mismatched} when the
+text and the data agree\\
+\texttt{python review/agreement.py <sheets>} & Reviewer agreement and Cohen's/Fleiss' $\kappa$ once
+the taxonomy review sheets are returned\\
+\texttt{tectonic thesis/main.tex} & This document\\
+\bottomrule
+\end{tabular}
+
+\section*{Known determinism caveats}
+\begin{itemize}[itemsep=2pt]
+  \item MPS kernels are not bit-reproducible across \texttt{torch} versions; a rerun should reproduce reported scores to roughly three decimal places, not exactly.
+  \item ROUGE-L in \texttt{summ\_pilot.py} is computed by an inline longest-common-subsequence implementation (matching \texttt{test.ipynb}) rather than by the \texttt{rouge\_score} package, so the two are not interchangeable.
+  \item The retrieval-ceiling measurement of Section~\ref{sec:ceiling} was computed over all 510 contracts before the split was drawn (Section~\ref{sec:threats}).
+\end{itemize}
+
+\chapter{Repository and Artifact Layout}
+\label{app:repo}
+
+\begin{verbatim}
+clausify-research/                    -- research deliverable
+|- PROJECT_REPORT.md / .pdf           -- step-by-step project report
+|- REPORT.md / .pdf                   -- findings & caveats report
+|- METHODOLOGY.md / .pdf              -- design-decision record
+|- data/
+|  |- train_80.csv                    -- 80% split (16,728 rows, 408 contracts)
+|  |- test_20.csv                     -- 20% split (4,182 rows, 102 contracts)
+|- notebooks/
+|  |- train.ipynb                     -- training notebook (EDA -> 3 models)
+|  |- test.ipynb                      -- STANDALONE evaluation notebook
+|  |- eda.ipynb                       -- original combined notebook
+|  |- build_artifacts.py              -- retrains & saves all artifacts
+|  |- artifacts/                      -- split.json, baseline.pkl
+|  |- outputs/                        -- three trained model checkpoints
+|- review/
+|  |- risk_taxonomy_review_sheet.csv  -- face-validity review instrument
+|  |- risk_taxonomy_review_sheet.md   -- printable version with instructions
+|- analysis/
+|  |- bootstrap_ci.py                 -- cluster bootstrap, presence models
+|  |- span_ci.py                      -- cluster bootstrap, span extraction
+|  |- rare_tail.py                    -- rare-category AND-rule breakdown
+|  |- e2e.py                          -- end-to-end pipeline evaluation
+|  |- summ_pilot.py                   -- two-reference-set summarizer pilot
+|  |- presence_run.py                 -- presence training at any data budget
+|  |- longformer_bench.py             -- sparse-attention cost benchmark
+|  |- diverse_refs.json               -- 150 clause-specific pilot references
+|- thesis/                            -- this document (LaTeX)
+
+clausify-app/                         -- Clausify demo application
+|- app.py                             -- Streamlit UI
+|- model_utils.py                     -- inference + risk taxonomy
+|- cat_questions.json                 -- 41 category->question strings
+|- sample_contract.txt                -- real CUAD test contract
+|- test_contract.txt                  -- synthetic multi-clause contract
+|- APP_REPORT.md / .pdf               -- application report
+\end{verbatim}

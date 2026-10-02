@@ -1,0 +1,104 @@
+{
+  "false_positives": [
+    {
+      "contract": "SoupmanInc_20150814_8-K_EX-10.1_9230148_EX-10.1_Franchise Agreement3",
+      "category": "Parties",
+      "tfidf": 1.0,
+      "trans": 0.985556423664093,
+      "window_index": 0,
+      "window_score": 0.985556423664093,
+      "window_text": "Attachment C to Master Franchise Agreement MULTI-STATE ADDENDUM CALIFORNIA APPENDIX 1. California Business and Professions Code Sections 20000 through 20043 provide rights to you concerning termination or non-renewal of a franchise. If the Master Franchise Agreement contains provisions that are inconsistent with the law, the law will control. 2. The Master Franchise Agreement provides for termination upon bankruptcy. This provision may not be enforceable under Federal Bankruptcy Law (11 U.S.C.A. Sec. 101 et seq. ). 3. The Master Franchise Agreement contains covenants not to compete which exten"
+    },
+    {
+      "contract": "Array BioPharma Inc. - LICENSE, DEVELOPMENT AND COMMERCIALIZATION AGREEMENT",
+      "category": "Insurance",
+      "tfidf": 0.8212072958705543,
+      "trans": 0.9671146273612976,
+      "window_index": 19,
+      "window_score": 0.9671146273612976,
+      "window_text": "reductions affecting the Product; (c) a fixed amount of [ * ] of gross sales to cover freight, postage, insurance costs on shipments to such Third Party, packing costs, and other transportation charges; and (d) sales and excise taxes, other consumption taxes, customs duties, and compulsory payments to Governmental Authorities, including mandatory sales-based contributions actually made by the Selling Party for \"Contributions for Drug Induced Suffering\" and any sales-based contribution for \"Contribution for Measure for Drug Safety,\" in the amount determined by and payable to PMDA each as consis"
+    },
+    {
+      "contract": "TELEGLOBEINTERNATIONALHOLDINGSLTD_03_29_2004-EX-10.10-CONSTRUCTION AND MAINTENANCE AGREEMENT",
+      "category": "Governing Law",
+      "tfidf": 0.8102122244254947,
+      "trans": 0.9556171298027039,
+      "window_index": 56,
+      "window_score": 0.9556171298027039,
+      "window_text": "thereof or their rights and obligations thereunder, and by reasons thereof there shall arise the need to decide the question by what municipal or national law this Agreement or any part or provision thereof is governed, the following facts shall be excluded from consideration, namely that this Agreement was made in a particular country and that it may appear by reason of its form, style, language or otherwise to have been drawn preponderantly with reference to a particular system of municipal or national law; the intention of the Parties being that such facts shall be regarded by the Parties a"
+    },
+    {
+      "contract": "Array BioPharma Inc. - LICENSE, DEVELOPMENT AND COMMERCIALIZATION AGREEMENT",
+      "category": "Change Of Control",
+      "tfidf": 0.7956042161834821,
+      "trans": 0.9423973560333252,
+      "window_index": 145,
+      "window_score": 0.9423973560333252,
+      "window_text": "e rights of such Sublicensees with respect to the Product in relevant country or countries within the Ono Territory shall terminate upon the termination of Ono's rights with respect to the Ono Territory. Subject to Ono's Affiliates' and Sublicensees' obligations under Section 14.2(a)(ii) above, Ono shall ensure that its Affiliates and such Sublicensees (if not assigned to Array pursuant to this Section 14.2(a)(viii)) shall transition all rights in and to the Product back to Array in the manner set forth in this Section 14.2 as if such Affiliate or Sublicensee were named herein. (ix) Following "
+    }
+  ],
+  "false_negatives": [
+    {
+      "contract": "GAINSCOINC_01_21_2010-EX-10.41-SPONSORSHIP AGREEMENT",
+      "category": "Most Favored Nation",
+      "tfidf": 0.21768786326653441,
+      "trans": 0.01766068860888481,
+      "gold_clause": "The Sponsor acknowledges that Racing has arranged and may arrange in the future for other sponsors for the Racing Team. Racing agrees that, during the term of this Agreement, (i) Sponsor shall have the right to approve or disapprove any additional sponsor identified by Racing, and (ii) unless another proposed sponsor has agreed to pay a sponsorship fee that exceeds the amount paid by Sponsor, no other sponsor shall receive any benefit of greater value (including either an equivalent or a more prominent use of another sponsor's name, logo or other identifying information) than the Benefits prov"
+    },
+    {
+      "contract": "ORBSATCORP_08_17_2007-EX-7.3-STRATEGIC ALLIANCE AGREEMENT",
+      "category": "Third Party Beneficiary",
+      "tfidf": 0.25992944288023884,
+      "trans": 0.01798112504184246,
+      "gold_clause": "Notwithstanding the foregoing, UTK may assign this Agreement or any portion of its Compensation as outlined herein to its subsidiaries in its sole discretion."
+    },
+    {
+      "contract": "USASYNTHETICFUELCORP_10_21_2010-EX-10.10-STRATEGIC ALLIANCE AGREEMENT",
+      "category": "Most Favored Nation",
+      "tfidf": 0.33010578741655283,
+      "trans": 0.01909457892179489,
+      "gold_clause": "If at any time on or prior to the earlier of (i) December 31, 2007, or (ii) the date on which Global Energy completes an initial public offering (\"IPO\") of its common stock, Global Energy sells additional common shares or other financial instruments convertible into its common shares, or enters into any similar transaction for the sale of an ownership interest in Global Energy which is the same or substantially the same as that sold to Oxbow under Section 1 of this Agreement, and the price of which is less than $200.00 per share, Global Energy shall issue additional common shares to Oxbow such"
+    },
+    {
+      "contract": "WatchitMediaInc_20061201_8-K_EX-10.1_4148672_EX-10.1_Content License Agreement",
+      "category": "Liquidated Damages",
+      "tfidf": 0.205902585554295,
+      "trans": 0.022249527275562286,
+      "gold_clause": "In the event that Oceanic Time Warner Cable removes the above content and or terminates this agreement prior to December 31, 2006, Oceanic Time Warner Cable agrees to pay a cancellation fee of Five Thousand Dollars ($5,000) per month multiplied by the number of months remain on the agreement."
+    }
+  ],
+  "span_errors": [
+    {
+      "contract": "LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT",
+      "category": "Covenant Not To Sue",
+      "window_contains_gold": true,
+      "predicted": ".",
+      "gold": "During the Term of this Agreement and for three years thereafter, the Distributor (on behalf of itself and each of its affiliates) agrees not to commence, or provide any information to or otherwise assist any person or entity in connection with, any suit, action or proceeding contesting the ownership, validity or enforceability of any patent, copyright, trademark, trade name or other propriety rig",
+      "token_f1": 0.0
+    },
+    {
+      "contract": "LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT",
+      "category": "Effective Date",
+      "window_contains_gold": false,
+      "predicted": "7th day of september, 1999",
+      "gold": "The term of this Agreement shall be ten (10) years (the \"Term\") which shall commence on the date upon which the Company delivers to Distributor the last Sample, as defined hereinafter.",
+      "token_f1": 0.06451612903225806
+    },
+    {
+      "contract": "LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT",
+      "category": "Expiration Date",
+      "window_contains_gold": true,
+      "predicted": "the parties acknowledge that the terms herein consist of there terms for illinois.",
+      "gold": "The term of this Agreement shall be ten (10) years (the \"Term\") which shall commence on the date upon which the Company delivers to Distributor the last Sample, as defined hereinafter.",
+      "token_f1": 0.05405405405405406
+    },
+    {
+      "contract": "LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT",
+      "category": "Insurance",
+      "window_contains_gold": true,
+      "predicted": "in addition, company agrees to indemnify, defend and hold harmless distributor from and against all suits, claims, obligations, liabilities, damages, losses and the like ( including attorneys ' fees and costs ) arising out of or related to company ' s manufacture or design of the products, provided that",
+      "gold": "Company will carry a reasonable amount of product liability insurance through a reasonably acceptable products liability insurance company and will name the Distributor as an additional insured under that policy. Company will make reasonable efforts to procure a policy, which is non-cancelable, except upon thirty (30) days, advance notice to the Distributor.",
+      "token_f1": 0.20224719101123595
+    }
+  ]
+}

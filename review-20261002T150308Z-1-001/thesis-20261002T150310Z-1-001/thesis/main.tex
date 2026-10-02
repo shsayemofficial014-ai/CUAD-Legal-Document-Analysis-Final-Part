@@ -1,0 +1,374 @@
+% ============================================================================
+%  AI-Powered Legal Document Analysis System (CUAD)
+%  B.Sc. Thesis -- BRAC University, Department of Computer Science & Engineering
+%  Follows the structure of BRACU_Thesis_TemplateV3 (16 Jan 2025)
+%  Compile: tectonic main.tex   (or pdflatex twice)
+% ============================================================================
+\documentclass[12pt, a4paper, oneside]{report}
+
+% ---------- packages ----------
+\usepackage[top=1in, bottom=1in, left=1in, right=1in]{geometry}
+\usepackage{newtxtext,newtxmath}          % Times-like font
+\usepackage{setspace}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{multirow}
+\usepackage[font={footnotesize},justification=centering,labelsep=colon]{caption}
+\usepackage{amsmath}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric,
+                decorations.pathreplacing, calc, fit, backgrounds, patterns}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage{etoolbox}
+
+\graphicspath{{figures/}}
+\doublespacing
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+% ---------- chapter/section heading style (template-like) ----------
+% Heading styles follow BRACU_Thesis_TemplateV3: "Chapter Heading" = Times 15pt
+% bold, left aligned, chapter number on its own line; "Chapter SubHeading" = 14pt.
+\titleformat{\chapter}[display]
+  {\normalfont\bfseries\raggedright}
+  {\fontsize{15}{18}\selectfont Chapter \thechapter}{6pt}{\fontsize{15}{18}\selectfont}
+\titlespacing*{\chapter}{0pt}{-20pt}{20pt}
+\titleformat{\section}{\normalfont\fontsize{14}{17}\selectfont\bfseries}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\normalfont\fontsize{12}{14}\selectfont\bfseries}{\thesubsection}{0.6em}{}
+% unnumbered front-matter headings use the same Chapter Heading look
+\titleformat{name=\chapter,numberless}[display]
+  {\normalfont\bfseries\raggedright}{}{0pt}{\fontsize{15}{18}\selectfont}
+
+% unnumbered front-matter "chapter" heading
+\newcommand{\frontchapter}[1]{%
+  \chapter*{#1}\addcontentsline{toc}{chapter}{#1}}
+
+% risk badge colors
+\definecolor{riskhigh}{HTML}{D94F5C}
+\definecolor{riskmed}{HTML}{E8A13A}
+\definecolor{risklow}{HTML}{4CAF82}
+
+\begin{document}
+
+% ============================================================================
+%  TITLE PAGE
+% ============================================================================
+\begin{titlepage}
+\centering
+{\Large\bfseries AI-Powered Legal Document Analysis System:\\
+Clause Detection, Category-Level Risk Prioritization\\ and Plain-Language Explanation on CUAD\par}
+\vspace{1.6cm}
+{\normalsize by\par}
+\vspace{0.6cm}
+{\large Jerin Aktar\\ \normalsize 22101279\par}\vspace{0.35cm}
+{\large Afnan Mazumdar\\ \normalsize 24141229\par}\vspace{0.35cm}
+{\large Shoyeb Hasan Sayem\\ \normalsize 22101386\par}
+\vspace{1.4cm}
+{\normalsize A thesis submitted to the Department of Computer Science and Engineering\\
+in partial fulfillment of the requirements for the degree of\\
+B.Sc. in Computer Science and Engineering\par}
+\vspace{1.4cm}
+{\normalsize Department of Computer Science and Engineering\\
+Brac University\\
+July 2026\par}
+\vfill
+{\small \copyright~2026. Brac University\\ All rights reserved.\par}
+\end{titlepage}
+
+\pagenumbering{roman}
+\setcounter{page}{2}
+
+% ============================================================================
+%  DECLARATION
+% ============================================================================
+\frontchapter{Declaration}
+It is hereby declared that
+{\singlespacing
+\begin{enumerate}[itemsep=3pt, topsep=6pt]
+  \item The thesis submitted is our own original work while completing our degree at Brac University.
+  \item The thesis does not contain material previously published or written by a third party, except where this is appropriately cited through full and accurate referencing.
+  \item The thesis does not contain material which has been accepted, or submitted, for any other degree or diploma at a university or other institution.
+  \item We have acknowledged all main sources of help.
+\end{enumerate}
+}
+\vspace{0.7cm}
+
+\textbf{Students' Full Name \& Signature:}
+\vspace{0.9cm}
+
+{\singlespacing
+\noindent
+\begin{tabular}{p{8cm}}
+\rule{5.5cm}{0.4pt}\\
+\textbf{Jerin Aktar}\\
+22101279\\
+\end{tabular}
+
+\vspace{0.9cm}
+
+\noindent
+\begin{tabular}{p{8cm}}
+\rule{5.5cm}{0.4pt}\\
+\textbf{Afnan Mazumdar}\\
+24141229\\
+\end{tabular}
+
+\vspace{0.9cm}
+
+\noindent
+\begin{tabular}{p{8cm}}
+\rule{5.5cm}{0.4pt}\\
+\textbf{Shoyeb Hasan Sayem}\\
+22101386\\
+\end{tabular}
+}
+
+% ============================================================================
+%  APPROVAL
+% ============================================================================
+\frontchapter{Approval}
+The thesis titled ``AI-Powered Legal Document Analysis System: Clause Detection, Category-Level Risk Prioritization and Plain-Language Explanation on CUAD'' submitted by
+\begin{enumerate}[itemsep=1pt]
+  \item Jerin Aktar (22101279)
+  \item Afnan Mazumdar (24141229)
+  \item Shoyeb Hasan Sayem (22101386)
+\end{enumerate}
+of Summer 2026 has been accepted as satisfactory in partial fulfillment of the requirement for the degree of B.Sc. in Computer Science and Engineering on July 2026.
+\vspace{0.9cm}
+
+\textbf{Examining Committee:}
+\vspace{0.9cm}
+
+\begin{tabular}{p{4.2cm} p{9cm}}
+Supervisor: & \\[0.1cm]
+(Member) & \rule{6.5cm}{0.4pt}\\
+ & Utsho Kumar Roy\\
+ & Department of Computer Science and Engineering\\
+ & Brac University\\[1.1cm]
+Head of Department: & \\[0.1cm]
+(Chair) & \rule{6.5cm}{0.4pt}\\
+ & Sadia Hamid Kazi, PhD\\
+ & Chairperson and Associate Professor\\
+ & Department of Computer Science and Engineering\\
+ & Brac University\\
+\end{tabular}
+
+% ============================================================================
+%  ETHICS STATEMENT
+% ============================================================================
+\frontchapter{Ethics Statement}
+This work uses the Contract Understanding Atticus Dataset (CUAD), a publicly released research dataset of 510 commercial contracts taken from public filings and annotated by legal experts under The Atticus Project. We did not collect or process any private, confidential, or personally sensitive documents, and no human subjects were involved. All experiments ran on our own hardware. The third-party models we fine-tuned (DistilBERT, FLAN-T5) and all supporting libraries are used under their open-source licenses, and every outside source is cited.
+
+The system is a research prototype meant to assist contract review. It is not legal advice, and that is stated in the application itself. For a tool of this kind the more serious ethical questions are not about the dataset but about what happens if someone relies on the output, so we set them out explicitly.
+
+\textbf{False reassurance is the primary hazard.} A clause the system does not detect produces no warning, and an absent warning is easily read as ``there is nothing here to worry about''. Our measurements say that reading would be wrong: 22.0\% of gold clauses are missed at the presence stage, only 21.7\% survive the full pipeline (Section~\ref{sec:e2e}), and the configuration we report as our headline misses 37.5\% of the High-risk clauses specifically (Section~\ref{sec:riskeval}). A user who reviews a contract with this tool and sees three warnings has not established that there are only three problems. This asymmetry --- silent false negatives versus visible false positives --- is why we regard High-risk recall as the ethically relevant metric even though it is not the one the aggregate optimizes.
+
+\textbf{Over-reliance by non-lawyers.} The interface is designed for people without legal training, which is exactly the audience least able to detect when it is wrong. Plain-English text presented with a confidence bar carries an authority the underlying model does not earn --- and Section~\ref{sec:threshold} shows the confidence bar is not even calibrated: scores above 0.9 correspond to roughly a 73\% chance of the clause being present. The plain-language sentence is a category template, not a reading of the user's clause (Section~\ref{sec:summ}). Presented uncritically, both invite more trust than the evidence supports.
+
+\textbf{Jurisdiction mismatch.} CUAD is US commercial contract law. Risk levels that are reasonable there may be wrong elsewhere --- a non-compete that binds in one jurisdiction may be unenforceable in another, which would make a High badge actively misleading. Since the motivating deployment context for this work is Bangladesh, and we have tested no Bangladeshi contract, this is a live limitation rather than a hypothetical one.
+
+\textbf{Whose risk is being scored.} The taxonomy assumes the user is the party with less bargaining power (Section~\ref{sec:weaker}). Shown to the drafting party, the same badges are miscalibrated in the opposite direction: a clause flagged High for a signer may be exactly what the drafter intended to secure. The system does not detect which side the user is on.
+
+\textbf{Accountability and authorship of the risk levels.} The levels were authored by three computer science students and have not been reviewed by anyone with legal training (Section~\ref{sec:taxvalid}). Presenting them in a polished interface lends them an institutional weight they have not earned. We consider obtaining expert review a precondition for any use beyond demonstration, not an optional improvement.
+
+\textbf{Privacy in real deployment.} Our experiments used only public contracts, so no privacy question arose here. A deployed version would face one immediately: contracts are among the most commercially sensitive documents an organization holds. Section~\ref{sec:privacy} records what the demonstration application does and does not do with uploaded text, and what a real deployment would have to add.
+
+% ============================================================================
+%  ABSTRACT
+% ============================================================================
+\frontchapter{Abstract}
+This thesis builds and evaluates a three-model pipeline for automated contract review on CUAD (510 contracts, 41 clause categories), using a held-out contract-level 20\% test split. A sliding-window DistilBERT presence classifier \emph{loses} to a full-document TF--IDF baseline (micro-F1 0.694 against 0.775), and the gap survives training on all 53{,}662 windows, three seeds, six aggregation rules and a threshold sweep. A conjunctive ensemble reaches 0.776, but its margin is smaller than the bootstrap, seed and split variance alike. Span extraction reaches token-F1 0.763 given a correct window. The fine-tuned summarizer emits one of 41 self-written templates verbatim on every input, scoring 0.116 against clause-specific references. End to end only 21.7\% of gold clauses survive all three stages, and the highest-scoring configuration misses 37.5\% of High-risk clauses. The system is a prototype, deployed as \emph{Clausify}; its risk taxonomy remains unvalidated.
+
+\vspace{0.5cm}
+\textbf{Keywords:} legal NLP; CUAD; clause extraction; category-level risk prioritization; contract summarization; held-out evaluation
+
+% ============================================================================
+%  ACKNOWLEDGEMENT
+% ============================================================================
+\frontchapter{Acknowledgement}
+First of all, all praise to the Almighty for allowing us to complete this thesis without any major interruption. We are grateful to our supervisor, Utsho Kumar Roy, for his guidance and patience through every phase of this work, and especially for insisting on a strict held-out evaluation --- that one requirement shaped how honestly this thesis reports its results. Finally, we thank our families for their constant support and encouragement. Without them, this work would not have been possible.
+
+% ============================================================================
+%  CONTENTS / LISTS
+% ============================================================================
+\tableofcontents
+\addcontentsline{toc}{chapter}{Table of Contents}
+\listoftables
+\addcontentsline{toc}{chapter}{List of Tables}
+\listoffigures
+\addcontentsline{toc}{chapter}{List of Figures}
+
+% ============================================================================
+%  ACRONYMS
+% ============================================================================
+\frontchapter{List of Acronyms}
+\begin{tabular}{p{3cm} p{11cm}}
+CUAD & Contract Understanding Atticus Dataset\\
+NLP & Natural Language Processing\\
+TF--IDF & Term Frequency--Inverse Document Frequency\\
+LR & Logistic Regression\\
+MIL & Multiple-Instance Learning\\
+BERT & Bidirectional Encoder Representations from Transformers\\
+QA & Question Answering\\
+EM & Exact Match\\
+ROUGE & Recall-Oriented Understudy for Gisting Evaluation\\
+MPS & Metal Performance Shaders (Apple GPU backend)\\
+TP / TN & True Positive / True Negative\\
+FP / FN & False Positive / False Negative\\
+SQuAD & Stanford Question Answering Dataset\\
+IP & Intellectual Property\\
+\end{tabular}
+
+% ============================================================================
+%  GLOSSARY
+% ============================================================================
+\frontchapter{Glossary}
+\begin{description}[itemsep=4pt]
+  \item[Clause category] One of the 41 types of contractual provision annotated in CUAD (e.g., \emph{Governing Law}, \emph{Non-Compete}, \emph{Cap on Liability}).
+  \item[Contract-level split] A train/test partition that assigns whole contracts to one side, so no clause from a training contract can appear in the test set.
+  \item[Presence classification] The task of deciding, for each clause category, whether a contract contains at least one clause of that category.
+  \item[Span extraction] The task of locating the exact character span of a clause inside the contract text, formulated as extractive question answering.
+  \item[Max-pooling (over windows)] Scoring every sliding window of a document and taking the maximum window score as the document-level prediction.
+  \item[Retrieval ceiling] The upper bound that a retrieval step imposes on a downstream model's recall: clauses in windows the retriever never selects can never be found.
+  \item[Weaker party] The contract signer with less bargaining power, from whose perspective the risk taxonomy in this work is scored.
+\end{description}
+
+% ============================================================================
+%  MAIN MATTER
+% ============================================================================
+\clearpage
+\pagenumbering{arabic}
+
+\input{chapters/ch1_introduction}
+\input{chapters/ch2_literature}
+\input{chapters/ch3_dataset}
+\input{chapters/ch4_methodology}
+\input{chapters/ch5_training}
+\input{chapters/ch6_results}
+\input{chapters/ch7_application}
+\input{chapters/ch8_conclusion}
+
+% ============================================================================
+%  REFERENCES
+% ============================================================================
+\begin{thebibliography}{9}
+\addcontentsline{toc}{chapter}{References}
+
+\bibitem{hendrycks2021cuad}
+D.~Hendrycks, C.~Burns, A.~Chen, and S.~Ball,
+``CUAD: An expert-annotated NLP dataset for legal contract review,''
+in \emph{Proc. 35th Conf. Neural Information Processing Systems (NeurIPS) Datasets and Benchmarks Track}, 2021.
+
+\bibitem{atticus2021}
+The Atticus Project,
+``Contract Understanding Atticus Dataset (CUAD) v1,''
+2021. [Online]. Available: \url{https://www.atticusprojectai.org/cuad}
+
+\bibitem{vaswani2017attention}
+A.~Vaswani, N.~Shazeer, N.~Parmar, J.~Uszkoreit, L.~Jones, A.~N. Gomez, {\L}.~Kaiser, and I.~Polosukhin,
+``Attention is all you need,''
+in \emph{Advances in Neural Information Processing Systems 30 (NeurIPS)}, 2017, pp. 5998--6008.
+
+\bibitem{devlin2019bert}
+J.~Devlin, M.-W. Chang, K.~Lee, and K.~Toutanova,
+``BERT: Pre-training of deep bidirectional transformers for language understanding,''
+in \emph{Proc. NAACL-HLT}, 2019, pp. 4171--4186.
+
+\bibitem{sanh2019distilbert}
+V.~Sanh, L.~Debut, J.~Chaumond, and T.~Wolf,
+``DistilBERT, a distilled version of BERT: smaller, faster, cheaper and lighter,''
+in \emph{5th Workshop on Energy Efficient Machine Learning and Cognitive Computing (NeurIPS)}, 2019.
+
+\bibitem{raffel2020t5}
+C.~Raffel, N.~Shazeer, A.~Roberts, K.~Lee, S.~Narang, M.~Matena, Y.~Zhou, W.~Li, and P.~J. Liu,
+``Exploring the limits of transfer learning with a unified text-to-text transformer,''
+\emph{Journal of Machine Learning Research}, vol. 21, no. 140, pp. 1--67, 2020.
+
+\bibitem{chung2022flan}
+H.~W. Chung \emph{et al.},
+``Scaling instruction-finetuned language models,''
+\emph{Journal of Machine Learning Research}, vol. 25, no. 70, pp. 1--53, 2024.
+
+\bibitem{rajpurkar2016squad}
+P.~Rajpurkar, J.~Zhang, K.~Lopyrev, and P.~Liang,
+``SQuAD: 100,000+ questions for machine comprehension of text,''
+in \emph{Proc. EMNLP}, 2016, pp. 2383--2392.
+
+\bibitem{beltagy2020longformer}
+I.~Beltagy, M.~E. Peters, and A.~Cohan,
+``Longformer: The long-document transformer,''
+\emph{arXiv preprint arXiv:2004.05150}, 2020.
+
+\bibitem{chalkidis2020legalbert}
+I.~Chalkidis, M.~Fergadiotis, P.~Malakasiotis, N.~Aletras, and I.~Androutsopoulos,
+``LEGAL-BERT: The muppets straight out of law school,''
+in \emph{Findings of the Association for Computational Linguistics: EMNLP 2020}, 2020, pp. 2898--2904.
+
+\bibitem{chalkidis2022lexglue}
+I.~Chalkidis, A.~Jana, D.~Hartung, M.~Bommarito, I.~Androutsopoulos, D.~M. Katz, and N.~Aletras,
+``LexGLUE: A benchmark dataset for legal language understanding in English,''
+in \emph{Proc. 60th Annual Meeting of the Association for Computational Linguistics (ACL)}, 2022.
+
+\bibitem{manor2019plain}
+L.~Manor and J.~J. Li,
+``Plain English summarization of contracts,''
+in \emph{Proc. Natural Legal Language Processing Workshop (NLLP)}, 2019, pp. 1--11.
+
+\bibitem{maynez2020faithfulness}
+J.~Maynez, S.~Narayan, B.~Bohnet, and R.~McDonald,
+``On faithfulness and factuality in abstractive summarization,''
+in \emph{Proc. 58th Annual Meeting of the Association for Computational Linguistics (ACL)}, 2020, pp. 1906--1919.
+
+\bibitem{kryscinski2020factcc}
+W.~Kry\'{s}ci\'{n}ski, B.~McCann, C.~Xiong, and R.~Socher,
+``Evaluating the factual consistency of abstractive text summarization,''
+in \emph{Proc. Conf. Empirical Methods in Natural Language Processing (EMNLP)}, 2020, pp. 9332--9346.
+
+\bibitem{zhang2020bertscore}
+T.~Zhang, V.~Kishore, F.~Wu, K.~Q. Weinberger, and Y.~Artzi,
+``BERTScore: Evaluating text generation with BERT,''
+in \emph{Int. Conf. Learning Representations (ICLR)}, 2020.
+
+\bibitem{guo2017calibration}
+C.~Guo, G.~Pleiss, Y.~Sun, and K.~Q. Weinberger,
+``On calibration of modern neural networks,''
+in \emph{Proc. 34th Int. Conf. Machine Learning (ICML)}, 2017, pp. 1321--1330.
+
+\bibitem{maron1998mil}
+O.~Maron and T.~Lozano-P\'{e}rez,
+``A framework for multiple-instance learning,''
+in \emph{Advances in Neural Information Processing Systems 10 (NIPS)}, 1998, pp. 570--576.
+
+\bibitem{efron1979bootstrap}
+B.~Efron,
+``Bootstrap methods: Another look at the jackknife,''
+\emph{The Annals of Statistics}, vol. 7, no. 1, pp. 1--26, 1979.
+
+\bibitem{flesch1948}
+R.~Flesch,
+``A new readability yardstick,''
+\emph{Journal of Applied Psychology}, vol. 32, no. 3, pp. 221--233, 1948.
+
+\bibitem{lin2004rouge}
+C.-Y. Lin,
+``ROUGE: A package for automatic evaluation of summaries,''
+in \emph{Text Summarization Branches Out (ACL Workshop)}, 2004, pp. 74--81.
+
+\end{thebibliography}
+
+% ============================================================================
+%  APPENDICES
+% ============================================================================
+\appendix
+% appendices keep the Chapter Heading look but are labelled "Appendix"
+\titleformat{\chapter}[display]
+  {\normalfont\bfseries\raggedright}
+  {\fontsize{15}{18}\selectfont Appendix \thechapter}{6pt}{\fontsize{15}{18}\selectfont}
+\input{chapters/appendix}
+
+\end{document}

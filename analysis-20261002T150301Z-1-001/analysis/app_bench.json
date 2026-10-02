@@ -1,0 +1,57 @@
+{
+  "warm_up_seconds": 0.3770928382873535,
+  "rows": [
+    {
+      "bucket": "shortest",
+      "chars": 1283,
+      "windows_after_cap": 1,
+      "windows_uncapped": 1,
+      "seconds": 2.0690791606903076,
+      "detected": null,
+      "peak_rss_gb": 1.059340288
+    },
+    {
+      "bucket": "25th pct",
+      "chars": 18104,
+      "windows_after_cap": 12,
+      "windows_uncapped": 12,
+      "seconds": 13.3371000289917,
+      "detected": null,
+      "peak_rss_gb": 1.190510592
+    },
+    {
+      "bucket": "median",
+      "chars": 35136,
+      "windows_after_cap": 24,
+      "windows_uncapped": 24,
+      "seconds": 27.147741079330444,
+      "detected": null,
+      "peak_rss_gb": 1.497153536
+    },
+    {
+      "bucket": "75th pct",
+      "chars": 65547,
+      "windows_after_cap": 30,
+      "windows_uncapped": 30,
+      "seconds": 32.44454884529114,
+      "detected": null,
+      "peak_rss_gb": 1.509654528
+    },
+    {
+      "bucket": "longest",
+      "chars": 289615,
+      "windows_after_cap": 30,
+      "windows_uncapped": 30,
+      "seconds": 32.03764295578003,
+      "detected": null,
+      "peak_rss_gb": 1.517109248
+    }
+  ],
+  "mean": 21.407222414016722,
+  "median": 27.147741079330444,
+  "min": 2.0690791606903076,
+  "max": 32.44454884529114,
+  "peak_rss_gb": 1.517207552,
+  "window_cap": 30,
+  "device": "cpu"
+}

@@ -1,0 +1,105 @@
+\chapter{Conclusion and Future Work}
+
+\section{Conclusion}
+We set out to turn CUAD's clause-extraction benchmark into something a contract signer could use: a system that finds the clauses, says how risky they are, and explains them in plain English. On a strict contract-level 80/20 split the delivered pipeline reaches 85.5\% accuracy and micro-F1 0.776 for clause presence and token-F1 0.763 for extraction given the right window, and it runs live inside \emph{Clausify}.
+
+Those are component scores, and the single most useful thing this thesis can say is that component scores are not the system. Answering our five research questions (Section~\ref{sec:rqs}) produced three negative results, and they are the contribution:
+
+\begin{itemize}[itemsep=3pt]
+  \item \textbf{The windowed transformer does not beat the lexical baseline} (RQ1), and it does not lose for any of the reasons we could have blamed. Not the training budget: the full 53{,}662-window run moves micro-F1 by $-0.0004$. Not the seed: three runs put the gap at 9.5 standard deviations. Not the aggregation rule: six alternatives, each at its own best threshold, all stay behind. The threshold accounts for part of it --- an un-chosen 0.5 costs 0.056 micro-F1 --- and that qualification belongs on the finding, but even the best cell we could construct remains below the baseline.
+  \item \textbf{The summarizer does not summarize} (RQ3). It emits a category template verbatim on every input, and a constant lookup table matches its score against clause-specific references. This is a proof-of-concept classification-to-template component and we describe it that way everywhere.
+  \item \textbf{The pipeline loses most of what its parts find} (RQ4). 21.7\% end-to-end survival against $\approx$64\% predicted, localized to a window-selection failure and a train/inference mismatch --- both fixable without a larger model.
+\end{itemize}
+
+RQ5 produced the result we least expected and consider most important for anyone building a system like this. Our evaluation metric and our stated purpose were never aligned: the AND-ensemble wins on micro-F1 while missing 37.5\% of High-risk clauses, and the OR rule that finishes last on micro-F1 misses 13.6\%. Two thirds of the aggregate's mass is Low-risk categories --- dates, party names, governing law. A system built to warn a signer before they sign was being selected on a metric dominated by the clauses that matter least.
+
+Five lessons seem likely to generalize.
+
+\textbf{First, a strong classical baseline deserves to be taken seriously, and beating it must be demonstrated rather than assumed} --- and when it is not beaten, the alternative explanations should be tested one at a time rather than conceded or hand-waved.
+
+\textbf{Second, a margin should be compared against its own noise before it is reported.} We measured three sources: bootstrap over contracts ($\approx$0.008 half-width), model seed (SD 0.0022) and dataset split (SD 0.0063). All three exceed the $+0.0014$ we had ranked a leaderboard by.
+
+\textbf{Third, an automatic metric measures its reference set, not the task.} ROUGE-L 0.775 became 0.116 when the references changed and nothing else did.
+
+\textbf{Fourth, evaluate the pipeline, not the parts} --- and evaluate it against the harm it is supposed to prevent, not against an average that treats a governing-law clause and an uncapped indemnity as equally important.
+
+\textbf{Fifth, feasibility ceilings are cheap to measure and expensive to assume.} A one-minute retrieval check (64\%) killed an architecture before it cost training time; the same discipline applied to sparse attention corrected \emph{us}, since a Longformer training step does fit in this laptop's memory at batch size 1, contrary to what we had asserted.
+
+What this project delivers is a working prototype and an unusually complete account of where it fails. Two gaps are large enough that we would not present the system as more than a prototype until they are closed: \textbf{no one with legal training has reviewed the risk taxonomy}, which is the main thing this work adds over CUAD, and \textbf{no user has ever been observed using the application}, so its central claim --- that a risk-prioritized report helps a non-lawyer --- remains untested. Both are listed first in the next section, and neither needs more compute.
+
+\section{Threats to Validity}
+\label{sec:threats}
+The results in Chapter 6 rest on choices that could, if wrong, change the conclusions. We set them out under the four standard headings, distinguishing throughout between threats we \emph{measured} and threats we merely \emph{acknowledge}.
+
+\subsection{Internal validity --- could our own procedure have produced these numbers?}
+\textbf{Hyperparameters were never tuned} (Section~\ref{sec:valprotocol}). This removes the usual threat --- no setting was chosen by scoring variants on the test set --- but introduces its mirror image: the transformer competes at conventional defaults against a baseline that has essentially no hyperparameters to get wrong. Section~\ref{sec:threshold} shows this is not hypothetical: the un-chosen 0.5 threshold costs the transformer 0.056 micro-F1, so part of the headline gap is a threshold artefact rather than a modelling result. \emph{This is the threat we consider most serious, and it qualifies our central finding.}
+
+\textbf{The summarizer's exploratory run monitored loss on test-split clauses} (Section~\ref{sec:valprotocol}). No checkpoint was selected from it and the deployed model was rebuilt without any evaluation set, so no reported score depends on it --- but the practice was wrong and the ``validation'' loss in Figure~\ref{fig:sumloss} should be discounted.
+
+\textbf{Design decisions were made after inspecting training data}, which is legitimate, but the boundary needs care. The window/stride geometry follows from the median clause length measured on training contracts; the retrieval ceiling of 64\% was measured across the whole corpus \emph{before} the split was drawn, which means it saw test contracts. That measurement rejected an architecture rather than selecting a hyperparameter, and it was made before any model existed, so we judge the leakage risk immaterial --- but it is not zero and we would draw the split first if repeating the work.
+
+\textbf{Single training run per model for span and summarizer.} Only the presence model was reseeded (Section~\ref{sec:seeds}). The span and summarizer scores carry an unmeasured variance component.
+
+\subsection{Construct validity --- do our metrics measure what we claim?}
+\textbf{ROUGE-L does not measure summarization quality here, and we can prove it.} Against 41 self-authored templates it reports 0.775; against clause-specific references, 0.116 --- and a constant lookup table scores the same 0.115 (Section~\ref{sec:summ}). We report both numbers precisely because the first one, alone, would be a construct-validity failure. What we still lack is any measure of \emph{faithfulness} or readability (Section~\ref{sec:lit_faith}), so even the 0.116 does not establish that the output preserves legal meaning.
+
+\textbf{Micro-F1 does not measure user harm.} Section~\ref{sec:riskeval} shows the two can point in opposite directions: the configuration that wins on micro-F1 misses 37.5\% of High-risk clauses while a configuration that ranks last misses 13.6\%. Two thirds of the aggregate's mass is Low-risk categories --- dates, party names, governing law. Any claim of the form ``this system is 77.6\% good'' inherits this problem.
+
+\textbf{Category-level risk is not clause-level risk} (Section~\ref{sec:risk}). Our labels say a \emph{category} typically deserves attention; they say nothing about whether a particular cap is generous or punitive. Calling the output a risk assessment would overstate the construct, which is why we call it prioritization.
+
+\textbf{The risk bands are our own construct.} The risk-weighted evaluation is computed against our unvalidated assignment of categories to levels (Section~\ref{sec:taxvalid}); if a lawyer reassigns categories, those numbers move with them.
+
+\textbf{Token-F1 against a single annotated span assumes the boundary is well defined.} Section~\ref{sec:span} notes that legal span boundaries are genuinely debatable, and Section~\ref{sec:errorexamples} shows at least one ``false negative'' that looks like an annotation disagreement rather than a model error.
+
+\subsection{External validity --- where do these results transfer?}
+Every number comes from CUAD: \textbf{510 US commercial contracts drawn from SEC filings, in English}. We have not evaluated a single contract from outside that corpus. Specifically we have no evidence about: other drafting traditions or jurisdictions, including \textbf{Bangladeshi contracts}, which is the deployment context motivating this work; consumer or employment agreements, which differ in structure and in who the weaker party is; non-English contracts; contracts shorter or far longer than CUAD's distribution; and contemporary machine-drafted agreements. The risk taxonomy carries an additional jurisdictional threat: a non-compete's enforceability varies by jurisdiction, so a level that is right in one place may be wrong in another. CUAD's SEC provenance also biases toward large-corporate agreements between represented parties, which is close to the opposite of the small-business and individual signers the system is aimed at.
+
+\subsection{Statistical conclusion validity --- are the intervals trustworthy?}
+\textbf{Three sources of variance were measured}, and they disagree in magnitude: the cluster bootstrap over contracts gives an interval half-width of about 0.008 (Section~\ref{sec:bootstrap}); model-seed SD is 0.0022 over three runs (Section~\ref{sec:seeds}); dataset-split SD is 0.0063 over twenty splits (Section~\ref{sec:splitvar}). All three exceed the ensemble's $+0.0014$ margin, which is why we call it a tie with some confidence. Split variance is the largest, and it is the one we could measure only for the baseline.
+
+\textbf{Three seeds is a small sample} from which to estimate a standard deviation; the interval around 0.0022 is itself wide.
+
+\textbf{Rare-category statistics are not meaningful individually.} Five categories have at most seven test positives. Their per-category F1 values are reported for completeness, not as estimates, and no claim in this thesis rests on any of them individually.
+
+\textbf{One split, one corpus.} The bootstrap resamples contracts within our test set; it cannot represent variation across corpora, and no interval in this thesis should be read as covering that.
+
+\section{Limitations}
+Section~\ref{sec:threats} analysed the threats to each kind of validity. This section lists the limitations of the artefact itself --- what the system does not do, as distinct from what could undermine the measurements. Both are stated where they arise in the text; these are pointers.
+
+\textbf{No usability evaluation} (Section~\ref{sec:usability}). Nobody outside the three of us has used Clausify. The thesis argues that a risk-prioritized report is more useful to a non-lawyer than a list of clauses, and offers no evidence for it: no task-completion measurement, no comprehension check, no trust or over-reliance measurement. Given that Section~\ref{sec:threshold} shows the confidence display is miscalibrated and Section~\ref{sec:summ} shows the plain-English sentence is category-generic, over-reliance is the specific thing a usability study would need to look for.
+
+\textbf{Backbone scale.} We downsized the backbones (DistilBERT, FLAN-T5-small) to fit a laptop compute budget, so our absolute scores understate what the same method would achieve with larger backbones on CUDA hardware.
+
+\textbf{Single-seed and single-budget training, partly addressed.} Section~\ref{sec:budget} reports what happened when the presence transformer was retrained on all 53{,}662 window examples instead of the 24{,}000-example subsample, and Section~\ref{sec:seeds} reports the spread across three training seeds. The other two models --- span and summarizer --- are still single runs at a subsampled budget (8{,}000 of 11{,}156 and 4{,}000 of 11{,}156), and we have not measured their seed variance at all. Their reported scores should be read with that in mind.
+
+\textbf{The rare tail is close to unlearnable at this dataset size}, and Section~\ref{sec:raretail} shows the conjunctive ensemble makes it worse rather than better: on the ten rarest categories the AND rule nets no F1 gain over the transformer alone, buying precision entirely at the cost of recall, and it zeroes out three categories that the transformer alone was partly finding. Since one of those rare categories is High-risk in our taxonomy, this is a limitation of the deployed system and not only of the leaderboard.
+
+\textbf{Span evaluation scope.} Section~\ref{sec:span} measures extraction within answer-bearing windows, not the heavier full-document precision-at-recall benchmark. Section~\ref{sec:e2e} closes part of that gap by measuring what survives the real pipeline, but it is not the same protocol as the CUAD paper's and we do not present it as comparable.
+
+\textbf{The summarizer does not summarize.} Section~\ref{sec:summ} establishes this quantitatively rather than as a caveat: the fine-tuned model emits one of 41 pre-written templates verbatim on every input, and against clause-specific references it scores no better than the bare template with no model at all. It is a classification-to-template component and should be described as one.
+
+\textbf{The risk taxonomy has not been externally validated.} It was written by three computer science students, and as of this writing no legal professional has reviewed it (Section~\ref{sec:taxvalid}). It is also per-category rather than per-instance --- it flags a category's typical danger, not the severity of the specific wording in front of the user.
+
+\textbf{One dataset, one jurisdiction.} Every number in this thesis comes from CUAD: 510 US commercial contracts drawn from SEC filings. We have not tested the pipeline on a single contract from outside that corpus, so we have no evidence about how it behaves on other drafting conventions, and none at all about the Bangladeshi deployment context that motivated the work.
+
+\section{Future Work}
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{Get the taxonomy reviewed.} The first thing we would do with another week: hand \texttt{review/risk\_taxonomy\_review\_sheet.csv} to two or three law students or practitioners, run \texttt{review/agreement.py}, and report Cohen's or Fleiss' $\kappa$ and the disputed categories whatever they turn out to be. Half an hour of someone else's time each; it is the cheapest credibility this project can buy.
+  \item \textbf{Observe someone using Clausify.} Five to ten participants, each reviewing a contract with and without the tool, measuring task time, clauses correctly identified, and---most importantly---whether users over-trust the output. The thesis claims a risk-prioritized report helps a non-lawyer; nothing in it tests that claim.
+  \item \textbf{Select on the objective that matters.} Define a risk-weighted criterion (High-risk recall, or an F1 weighting High clauses more heavily), carve a validation split from the 408 training contracts, select the ensemble rule and per-model thresholds on it, and report once on the test set. Section~\ref{sec:riskeval} suggests OR would win; choosing it on the evidence we have would be test-set selection.
+  \item \textbf{Calibrate the confidence score.} Platt scaling or isotonic regression on a validation split would make the application's confidence bar mean what a user reads it to mean (ECE 0.201 at present). No retraining required.
+  \item \textbf{Give the span model a way to abstain.} SQuAD~v2-style unanswerable examples would stop it answering confidently from windows that cannot contain the clause --- one of the two causes of the 21.7\% end-to-end rate (Section~\ref{sec:e2e}).
+  \item \textbf{Train the span model on the windows it will actually see.} Varying the answer offset during training, instead of re-centring every example 150 characters in, addresses the other cause.
+  \item \textbf{Evaluate summaries for faithfulness, not overlap.} BERTScore, an entailment-based consistency check, a readability statistic, and a small human rating of whether legal meaning survives (Section~\ref{sec:lit_faith}).
+  \item \textbf{Attention pooling over windows.} The ablation in Section~\ref{sec:pooling} varied only fixed statistics; a learned aggregator that weights windows by relevance is the untested option most likely to help.
+  \item \textbf{Cross-validation rather than one split.} Dataset-split SD is the largest uncertainty we measured (Section~\ref{sec:splitvar}) and we could only measure it for the baseline.
+  \item \textbf{A genuinely abstractive summarizer.} Grow the 41-template seed into a clause-diverse target set and re-fine-tune. The 150-clause pilot in Section~\ref{sec:summ} is a working prototype of the annotation protocol and of the evaluation that would detect success; scaling it to a few thousand clauses is the actual path from template classification to simplification.
+  \item \textbf{Risk-aware ensemble rules.} Section~\ref{sec:raretail} suggests, but does not test, applying the permissive (OR) rule on High-risk categories and the conjunction elsewhere, so that recall is protected exactly where a missed clause costs the signer most. This needs its own held-out evaluation --- choosing the rule after seeing the test set would invalidate it.
+  \item \textbf{Dense retrieval.} Our 64\% retrieval ceiling (Section~\ref{sec:ceiling}) was measured with TF--IDF query scoring only. A sentence-encoder retriever matches on meaning rather than shared vocabulary and may raise that ceiling enough to make a retrieve-then-read pipeline competitive; the measurement is cheap and we should have run it.
+  \item \textbf{A trained sparse-attention baseline.} Section~\ref{sec:lit_long} argues against Longformer on grounds that are partly arithmetic and partly cost, and Section~\ref{sec:lfbench} measures the cost --- but nobody has actually trained one on this task. On CUDA hardware, a Longformer-with-windowing baseline is the honest comparison our argument currently substitutes reasoning for.
+  \item \textbf{Scale the backbones.} Re-run the unchanged pipeline with DeBERTa-v3-base/large and FLAN-T5-base on CUDA hardware to close the gap to the published CUAD baselines.
+  \item \textbf{Full-document span benchmark.} Implement the document-stride ranked evaluation so we can report precision at 80\% recall and compare with the CUAD paper apples-to-apples.
+  \item \textbf{Cross-clause conflict detection.} Bring the rule engine designed in our pre-thesis phase (for example, \emph{Exclusivity} vs.\ \emph{Most Favored Nation}) into the deployed application.
+  \item \textbf{Instance-level risk.} Move from per-category risk to per-clause severity by reading the extracted span itself --- a cap's amount, a non-compete's duration.
+  \item \textbf{Contracts from outside CUAD.} Even three locally sourced English-language commercial contracts, run through the pipeline and inspected by hand, would tell us more about generalization than any further tuning on CUAD, and it is the first step towards the Bangladeshi deployment this work was aimed at.
+\end{itemize}

@@ -1,0 +1,120 @@
+\chapter{Clausify: the Demonstration Application}
+
+\section{Purpose and Design}
+The final deliverable is \emph{Clausify}, a Streamlit web application that runs the two trained transformer models live on any contract the user provides and presents the findings as a risk-prioritized report --- the pipeline of Figure~\ref{fig:pipeline}, made usable. The design goal is simple: a non-lawyer should see the ``watch out before signing'' items first. Detected clauses are grouped \textcolor{riskhigh}{\textbf{High}} $\rightarrow$ \textcolor{riskmed}{\textbf{Medium}} $\rightarrow$ \textcolor{risklow}{\textbf{Low}} and sorted by model confidence within each group.
+
+\section{User Workflow}
+\begin{enumerate}[itemsep=2pt]
+  \item \textbf{Add a contract.} A toggle offers two input modes --- paste the contract text directly, or upload a \texttt{.txt} file (Figure~\ref{fig:apphome}). A confidence-threshold slider (default 0.50) controls how conservative detection should be.
+  \item \textbf{Analyze.} One click runs both models end-to-end; a progress bar tracks the presence scan across the 41 categories.
+  \item \textbf{Read the report.} A summary bar counts the detected clauses per risk level (Figure~\ref{fig:appresults}), and below it each detected clause appears as a card. On the synthetic test contract the bar reports 7 High, 15 Medium and 8 Low risk clauses --- 30 of the 41 categories detected.
+\end{enumerate}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{app_home.png}
+\caption{The Clausify input screen.}
+\label{fig:apphome}
+\end{figure}
+
+Each clause card shows four things: the category name with a colour-coded risk badge; the one-line plain-English reason that category carries its risk (from the taxonomy in Appendix~\ref{app:taxonomy}); the presence model's confidence drawn as a bar; and the exact clause text the span model extracted, quoted from the user's own contract (Figure~\ref{fig:appcards}). An expandable table lists all 41 categories with their risk level and raw presence score, so nothing the models computed is hidden from the user.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{app_results.png}
+\caption{Clausify results view on the synthetic test contract.}
+\label{fig:appresults}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{app_cards.png}
+\caption{High-risk clause cards in Clausify.}
+\label{fig:appcards}
+\end{figure}
+
+\section{How the Models Run Inside the App}
+The application reproduces the inference path from training exactly:
+\begin{enumerate}[itemsep=2pt]
+  \item \textbf{Windowing.} The contract is cut into 2{,}000-character windows with a 1{,}500-character stride --- the same scheme used in training --- capped at 30 windows so very long documents stay responsive.
+  \item \textbf{Model 1 --- presence.} For each of the 41 categories, the exact CUAD question the model was trained on is paired with every window and scored by the window-level DistilBERT. The per-category document score is the max-pooled window probability; categories above the threshold are reported present, and the best-scoring window is remembered.
+  \item \textbf{Model 2 --- span.} For each detected category, the DistilBERT-QA model runs over that best window (in 1{,}200-character focus chunks) and returns the highest-confidence span --- the clause text shown on the card.
+  \item \textbf{Risk layer.} The detected category is looked up in the fixed 8/22/11 taxonomy for its level and reason.
+\end{enumerate}
+
+All inference runs on CPU so the app works on any machine; a contract takes roughly 5--15 seconds once the models are loaded. The app loads the actual trained checkpoints saved by the training pipeline (\texttt{presence\_mil/final} and \texttt{span/final}), and a single environment variable redirects it if the models are moved.
+
+\section{Implementation Notes}
+The interface is a single-page Streamlit application (\texttt{app.py}) sitting on a small inference module (\texttt{model\_utils.py}) that owns model loading, windowing, max-pooling, span extraction, and the risk table. Two test contracts ship with the app: a genuine CUAD contract, and a synthetic ``Master Software License and Distribution Agreement'' that we wrote specifically to exercise a wide spread of the 41 categories. On that synthetic contract the app detects clauses across all three risk bands and puts \emph{Uncapped Liability}, \emph{IP Ownership Assignment}, \emph{Exclusivity}, and \emph{Liquidated Damages} at the top of the report --- exactly the before-you-sign warnings the design aims for.
+
+\section{Data Handling and Privacy}
+\label{sec:privacy}
+The application accepts contract text, and contracts are among the most commercially sensitive documents an organization holds. Our experiments used only public CUAD contracts, so no privacy question arose during this research --- but the demonstration invites a user to paste their own agreement, and it is worth stating precisely what happens to it.
+
+\textbf{What the demonstration does.} All inference is local: the two DistilBERT checkpoints are loaded from disk and run in the same process as the interface, and no contract text leaves the machine the application runs on. The uploader accepts a single \texttt{.txt} file, which is read into memory and decoded; nothing is written to disk, no database or log records the text, and no analytics or telemetry are collected. When the browser session ends the text is gone --- it survives only in Streamlit's in-memory session state while the page is open.
+
+\textbf{What that guarantee depends on.} It holds because the demonstration runs locally. Hosted on a shared server, the same code would place the user's contract in the memory of a machine they do not control, and Streamlit's session model would not by itself prevent the operator from reading it. The privacy property here comes from the deployment topology, not from anything the application does, and we should not claim otherwise.
+
+\textbf{What is deliberately absent, and would be required for real use.} There is no authentication, so any user of the host can open the app. There is no file-size limit beyond what Streamlit imposes by default, and no timeout, so a very large upload can occupy the process. Only \texttt{.txt} is accepted --- which is a restriction of convenience rather than of safety, but it does avoid the parser-level attack surface that PDF or DOCX ingestion would introduce, and a real deployment adding PDF support would need to treat the parser as untrusted input handling. There is no retention policy, because there is no retention. There is no redaction of party names before processing, which would matter if any component were ever moved to a hosted model API.
+
+\textbf{The rule we would apply to any extension.} The moment any part of this pipeline calls a remote service, the privacy story changes completely: the contract would be transmitted to a third party and potentially retained by them. The current design avoids this entirely by using small local models, and we regard that as a property worth preserving rather than an artefact of the laptop budget --- it is one of the few places where the constraint that shaped this project produced the better design.
+
+\section{Measured Latency}
+\label{sec:appbench}
+Chapter~2 justified the choice of a distilled backbone partly on the grounds that the interface must respond quickly. Section~\ref{sec:lfbench} measured what the alternative would have cost; this section measures what \emph{we} actually deliver, running the application's own inference path on held-out contracts spanning the length distribution.
+
+\begin{table}[ht]
+\centering
+\caption{Latency of the deployed pipeline.}
+\label{tab:appbench}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Contract} & \textbf{Characters} & \textbf{Windows scored} & \textbf{Time} & \textbf{Peak RSS}\\
+\midrule
+Shortest in test set & 1{,}283 & 1 & 2.1\,s & 1.06\,GB\\
+25th percentile & 18{,}104 & 12 & 13.3\,s & 1.19\,GB\\
+Median & 35{,}136 & 24 & 27.1\,s & 1.50\,GB\\
+75th percentile & 65{,}547 & 30 (capped) & 32.4\,s & 1.51\,GB\\
+Longest in test set & 289{,}615 & 30 (capped) & 32.0\,s & 1.52\,GB\\
+\midrule
+\multicolumn{3}{l}{\emph{median 27.1\,s \quad mean 21.4\,s \quad worst case 32.4\,s}} & & \\
+\bottomrule
+\end{tabular}
+
+{\footnotesize\singlespacing \emph{Note.} Measured through the application's own \texttt{analyze()} entry point. CPU only, Apple M4, models already loaded (cold load adds 0.4\,s). Peak RSS is the whole Python process, both models resident.\par}
+\end{table}
+
+The earlier draft of this chapter claimed a contract takes ``roughly 5--15 seconds''. That was an impression from watching the demo on short inputs, not a measurement, and it is wrong: a median-length contract takes 27.1 seconds. We have replaced the claim with the table.
+
+Two design consequences are visible in the numbers. First, latency is essentially linear in the number of windows, since the dominant cost is 41 categories $\times$ windows forward passes through DistilBERT --- the model is scored once per (category, window) pair and nothing is cached across categories. Second, the 30-window cap is what keeps the worst case bounded: without it the longest test contract would take several minutes, and with it every contract above roughly 47{,}000 characters receives the same truncated treatment. That cap is a latency decision with a silent recall cost --- clauses beyond the cap cannot be found at all --- and it is not reflected anywhere in the Chapter~6 numbers, which score the full document. It is a limitation of the deployed system rather than of the method, and Section~\ref{sec:demolimits} now says so.
+
+\section{Usability}
+\label{sec:usability}
+No usability evaluation was carried out. The application's central claim --- that grouping clauses by risk helps a non-lawyer act on a contract --- is therefore untested, and Section~\ref{sec:threats} lists it under construct validity rather than among the results.
+%% ==================================================================
+%% TODO IF THE INFORMAL WALKTHROUGH IS RUN (review/USABILITY_PROTOCOL.md)
+%% Replace the paragraph above with 3-5 sentences, e.g.:
+%%
+%% "We ran an informal walkthrough with two non-lawyer participants (15
+%%  minutes each). This is far too small to constitute a usability study and
+%%  is reported only to replace an absence of evidence with a little.
+%%  <What they did first.> <What they said in answer to the four questions.>
+%%  <Anything suggesting over-trust in the quoted clause text or the
+%%  confidence bar.> No task-completion or comprehension measurement was
+%%  attempted, and with two participants no quantitative claim is possible."
+%%
+%% If a participant treated the quoted clause text as authoritative, or read
+%% the confidence bar as a probability, say so -- Chapter 6 shows both are
+%% unwarranted, and an observed instance belongs in the ethics discussion too.
+%% ==================================================================
+
+\section{Honest Limitations of the Demo}
+\label{sec:demolimits}
+For interactive latency the app runs the transformer presence model alone rather than the AND-ensemble (the TF--IDF leg needs the fitted vectorizer, which the packaged demo leaves out). As Chapter 6 showed, the transformer alone over-detects; the user can counter this by raising the threshold slider. Two qualifications on that sentence have to be added now that both have been measured.
+
+\textbf{The threshold slider is not calibrated in the units a user will read it in.} Section~\ref{sec:threshold} shows the transformer's max-pooled score has an Expected Calibration Error of 0.201 and is overconfident throughout: among detections scoring above 0.9 --- a nearly full confidence bar --- the clause is actually present about 73\% of the time, and among those in the 0.5--0.6 band, under 20\%. Moving the slider does trade recall for precision in the right direction, but the number on it should not be read as a probability. Fitting a calibration map on a validation split would fix this without retraining and is the cheapest available improvement to the interface.
+
+\textbf{Running the transformer alone is, unusually, the better choice for High-risk clauses.} The thesis reports the AND ensemble as its headline configuration, so a reader might take the demo's use of the transformer alone as a compromise forced by packaging. Section~\ref{sec:riskeval} shows it is not a compromise at all where it matters most: the ensemble misses 37.5\% of High-risk clauses while the transformer alone misses 15.9\%. The demo's configuration is worse on aggregate micro-F1 and better at surfacing the clauses a signer would most regret missing. We record this as an accident rather than a design decision --- it was made for packaging reasons before we had run the risk-weighted evaluation --- but it is the configuration we would now choose deliberately.
+
+\textbf{The 30-window cap silently truncates long contracts.} To bound latency the app scores at most 30 windows, so any contract beyond 45{,}500 characters is only partly read, and clauses past that point cannot be detected at all. None of the Chapter 6 numbers reflect this, since they score full documents. This is not an edge case: \textbf{38.4\% of CUAD contracts (196 of 510) exceed 45{,}500 characters}, and the longest test contract is 289{,}615 characters, of which the app reads the first 16\%. Table~\ref{tab:appbench} shows the symptom --- the 75th-percentile and longest contracts take the same time despite differing fourfold in length, because both are truncated to 30 windows. Span boundaries inherit the distilled backbone's approximate edges --- and Section~\ref{sec:e2e} shows this understates the problem: when the extraction window is chosen by the presence model rather than handed over, the quoted text overlaps the real clause in only about a fifth of cases overall. The practical consequence for a user of this demo is worth stating plainly, and the application should state it too: \textbf{the risk badge and the category name are much more reliable than the quoted sentence beneath them}. A card should be read as ``this contract appears to contain a clause of this type, look here'' rather than as ``this is the clause''. And the risk levels are per-category, not per-instance: the taxonomy flags that a \emph{Cap on Liability} clause deserves attention, but it does not read whether this particular cap is generous or punishing. All of this is stated in the app itself. What the demonstration does establish is that both models generalize to contracts they have never seen, and that the output can be presented in a form a layperson can act on.

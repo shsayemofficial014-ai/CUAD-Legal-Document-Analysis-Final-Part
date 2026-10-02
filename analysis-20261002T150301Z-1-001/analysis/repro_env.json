@@ -1,0 +1,22 @@
+{
+ "python": "3.13.5",
+ "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+ "machine": "arm64",
+ "torch": "2.8.0",
+ "transformers": "5.12.1",
+ "scikit_learn": "1.6.1",
+ "numpy": "2.1.3",
+ "pandas": "2.2.3",
+ "datasets": "5.0.0",
+ "rouge_score": "installed",
+ "chip": "Apple M4",
+ "ram_gb": 17.2,
+ "sha256_prefix": {
+  "CUAD_v1.json": "ed0b77d85bdf4014",
+  "artifacts/split.json": "177e2ef48dfab9cd",
+  "artifacts/baseline.pkl": "1c26214794393bdb",
+  "presence_mil/final/model.safetensors": "4b1aec3cc43aeea9",
+  "span/final/model.safetensors": "f97ba9b172beac42",
+  "summarizer/final/model.safetensors": "9fcb6bdf777d033c"
+ }
+}

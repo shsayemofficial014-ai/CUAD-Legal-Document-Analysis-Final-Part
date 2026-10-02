@@ -1,0 +1,9 @@
+{
+  "n": 1052,
+  "window_correct": 718,
+  "window_correct_rate": 0.6825095057034221,
+  "span_ok_given_window_correct": 0.3969359331476323,
+  "both": 285,
+  "window_wrong": 334,
+  "span_ok_given_window_wrong": 8
+}

@@ -1,0 +1,15 @@
+{
+  "rule": "AND",
+  "n_gold": 1348,
+  "n_presence": 1052,
+  "n_span_ok": 293,
+  "n_end_to_end": 293,
+  "presence_recall": 0.7804154302670623,
+  "span_given_presence": 0.2785171102661597,
+  "end_to_end": 0.21735905044510387,
+  "mean_token_f1_given_presence": 0.38601760389572176,
+  "end_to_end_ci": [
+    0.1959548888389577,
+    0.23943661971830985
+  ]
+}

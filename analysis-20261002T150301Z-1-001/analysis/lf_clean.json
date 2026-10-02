@@ -1,0 +1,68 @@
+[
+ {
+  "model": "longformer",
+  "seq": 4096,
+  "batch": 1,
+  "mode": "infer",
+  "params": 148661762,
+  "device": "mps",
+  "sec_per_forward": 3.694395589828491,
+  "ok": true,
+  "peak_gb": 2.175680512
+ },
+ {
+  "model": "distilbert",
+  "seq": 256,
+  "batch": 1,
+  "mode": "infer",
+  "params": 66955010,
+  "device": "mps",
+  "sec_per_forward": 0.017412233352661132,
+  "ok": true,
+  "peak_gb": 1.105969152
+ },
+ {
+  "model": "distilbert",
+  "seq": 256,
+  "batch": 16,
+  "mode": "infer",
+  "params": 66955010,
+  "device": "mps",
+  "sec_per_forward": 0.18746533393859863,
+  "ok": true,
+  "peak_gb": 1.152090112
+ },
+ {
+  "model": "longformer",
+  "seq": 4096,
+  "batch": 1,
+  "mode": "train",
+  "params": 148661762,
+  "device": "mps",
+  "sec_per_step": 258.43301951885223,
+  "ok": true,
+  "peak_gb": 14.714519552
+ },
+ {
+  "model": "longformer",
+  "seq": 4096,
+  "batch": 2,
+  "mode": "train",
+  "params": 148661762,
+  "device": "mps",
+  "sec_per_step": 2170.3606944084167,
+  "ok": true,
+  "peak_gb": 20.747616256
+ },
+ {
+  "model": "distilbert",
+  "seq": 256,
+  "batch": 16,
+  "mode": "train",
+  "params": 66955010,
+  "device": "mps",
+  "sec_per_step": 3.171364426612854,
+  "ok": true,
+  "peak_gb": 4.46988288
+ }
+]

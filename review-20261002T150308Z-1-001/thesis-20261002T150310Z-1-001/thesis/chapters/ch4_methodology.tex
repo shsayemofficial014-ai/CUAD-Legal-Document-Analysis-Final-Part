@@ -1,0 +1,466 @@
+\chapter{Methodology}
+
+\section{Pipeline Overview}
+The system is a staged pipeline (Figure~\ref{fig:pipeline}). Contract text is windowed; a presence stage decides which of the 41 categories the contract contains; a span stage extracts the exact clause text for each detected category; a risk layer attaches the detected \emph{category's} High/Medium/Low level; and a text-generation stage attaches a plain-English sentence. The final output is a risk-prioritized report. Section~\ref{sec:summ} shows that the last stage does not in fact summarize the clause in front of it --- it selects among 41 pre-written category sentences --- so the pipeline is better described as classification-to-template than as summarization. Figure~\ref{fig:pipeline} names the stages and the models behind them; Figure~\ref{fig:dataflow} at the end of this chapter repeats the same chain with the concrete data object that crosses each boundary, which is the version to consult when reading the implementation.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+  node distance=4mm and 6mm,
+  stage/.style={draw, rounded corners=2pt, minimum height=9mm, minimum width=30mm,
+                align=center, font=\small, fill=blue!6},
+  added/.style={stage, fill=orange!15},
+  arr/.style={-{Stealth[length=2.5mm]}, thick}
+]
+\node[stage] (a) {Contract\\text};
+\node[stage, right=of a] (b) {Windowing \&\\preprocessing};
+\node[stage, right=of b] (c) {41-clause presence\\(TF--IDF + DistilBERT)};
+\node[added, below=of c] (d) {Risk prioritization\\High / Med / Low};
+\node[stage, left=of d] (e) {Span extraction\\(DistilBERT-QA)};
+\node[added, left=of e] (f) {Plain-English\\summary (FLAN-T5)};
+\node[added, below=of e] (g) {Risk-prioritized report};
+\draw[arr] (a) -- (b);
+\draw[arr] (b) -- (c);
+\draw[arr] (c) -- (d);
+\draw[arr] (d) -- (e);
+\draw[arr] (e) -- (f);
+\draw[arr] (f.south) |- (g.west);
+\draw[arr] (e) -- (g);
+\end{tikzpicture}
+\caption{The end-to-end pipeline; shaded stages are added by this work.}
+\label{fig:pipeline}
+\end{figure}
+
+One principle runs through everything in this chapter: \textbf{build a strong, cheap baseline first, and measure feasibility ceilings before spending training time}. Both habits changed the design in concrete ways, as the next sections show.
+
+\section{Stage 2A: Presence Classification}
+
+\subsection{A strong baseline first: full-document TF--IDF}
+Classical bag-of-words models have no input-length limit, so a TF--IDF representation gets to read the \emph{entire} contract --- an advantage no windowed transformer has. We fit a TF--IDF vectorizer (20{,}000 features, word uni- and bi-grams, sublinear TF, $\text{min\_df}=2$) on the 408 training contracts and train one class-balanced logistic regression per category. Legal drafting is extremely formulaic (``\emph{This Agreement shall be governed by the laws of the State of \ldots}''), so distinctive vocabulary alone carries a lot of signal. This baseline sets the bar every neural model has to beat.
+
+\subsection{Measuring the retrieval ceiling --- and dropping retrieval}
+\label{sec:ceiling}
+The obvious way to hand a long contract to a transformer is retrieval: slide 2{,}000-character windows with a 1{,}500-character stride over the text (the windowing scheme itself is drawn in Figure~\ref{fig:windows}), score each window by TF--IDF cosine similarity to the category query, and give the model only the best window or windows. The query uses only information available at inference time --- the category name or its CUAD question, never the answer --- so there is no leakage.
+
+Before training anything, we measured the \emph{retrieval hit-rate}: how often does the selected window actually contain the gold clause? Figure~\ref{fig:ceiling} shows what the measurement is doing and why the answer is a hard bound. Whatever this number is, it is an upper bound on the downstream model's recall, because a clause sitting in a window the retriever never selects cannot be found by any model placed after it. The best strategy we found (category name as query, top-3 windows) reached only \textbf{64.0\%} (Table~\ref{tab:retrieval}). Interestingly, the CUAD question text did worse than the bare category name, because the questions share so much boilerplate that all the category queries end up nearly identical. A recall ceiling of 0.64 sits below the baseline's overall performance ($\approx$0.78), so a retrieval-windowed transformer was going to lose before it was ever trained. The measurement took seconds and saved us a wasted training run.
+
+One qualification belongs with that number. What we measured is a ceiling on \emph{lexical} retrieval: every query strategy in Table~\ref{tab:retrieval} scores windows by TF--IDF cosine similarity, so a clause phrased without the vocabulary of its category name is invisible to the retriever even when it is plainly present. A dense retriever --- a sentence encoder embedding both the query and each window --- matches on meaning rather than on shared terms and would very likely lift the 64.0\% figure, possibly above the baseline. We did not test one, so the honest reading of this section is narrower than ``retrieval does not work'': it is that \emph{lexical} retrieval imposes a ceiling too low to build on, which was enough to send us to the windowing design in Section~\ref{sec:mil}. Whether a dense retriever raises the ceiling far enough to make a retrieve-then-read pipeline competitive is an open question we list in future work.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize,
+  wbox/.style={draw=gray!55, fill=gray!8, minimum width=15mm, minimum height=7mm,
+               inner sep=0pt, rounded corners=1pt},
+  sel/.style={draw=blue!65, fill=blue!20, minimum width=15mm, minimum height=7mm,
+              inner sep=0pt, rounded corners=1pt, line width=0.7pt}
+]
+% ---- query --------------------------------------------------------------
+\node[draw=gray!60, fill=orange!12, rounded corners=1pt, inner sep=2.5pt] (q) at (67,22)
+  {category query $q_c$ = ``Governing Law''};
+\draw[-{Stealth[length=2mm]}, gray!65] (67,17.6) -- (67,11.2);
+\node[anchor=west, font=\tiny, text=gray!45!black] at (70,14.4)
+  {TF--IDF cosine similarity, computed for every window};
+
+% ---- windows ------------------------------------------------------------
+\foreach \i/\x/\s in {1/0/0.12, 3/34/0.08, 5/68/0.19, 6/85/0.05, 8/119/0.10} {
+  \node[wbox] (w\i) at (\x+7.5,7) {$w_{\i}$};
+  \node[font=\tiny, text=gray!45!black] at (\x+7.5,1.5) {\s};
+}
+\foreach \i/\x/\s in {2/17/0.31, 4/51/0.27, 7/102/0.22} {
+  \node[sel] (w\i) at (\x+7.5,7) {$w_{\i}$};
+  \node[font=\tiny, text=blue!45!black] at (\x+7.5,1.5) {\textbf{\s}};
+}
+% gold-bearing window
+\draw[riskhigh, line width=0.9pt, rounded corners=1pt] (67.2,2.8) rectangle (83.8,11.2);
+
+% ---- legend + verdict ---------------------------------------------------
+\node[anchor=west, font=\tiny] at (0,-4)
+  {\textcolor{blue!65!black}{$\blacksquare$}~selected: top-$k{=}3$ windows sent to the model
+   \qquad \textcolor{riskhigh}{$\square$}~window that actually holds the answer};
+\node[anchor=west, align=left, font=\scriptsize] at (0,-10.5)
+  {The gold window $w_5$ is \textbf{not} in the top~3, so this (contract, category) pair is
+   \textbf{unreachable}:\\ no model downstream of the retriever can ever recover it. Repeated over
+   all positive pairs, this yields a hit-rate of 64.0\%.};
+
+% ---- ceiling bar --------------------------------------------------------
+\fill[risklow!40] (0,-30) rectangle (89.6,-23);
+\fill[gray!18]    (89.6,-30) rectangle (140,-23);
+\draw[gray!60]    (0,-30) rectangle (140,-23);
+\draw[gray!60]    (89.6,-30) -- (89.6,-23);
+\node[font=\tiny] at (44.8,-26.5) {recall still attainable: \textbf{64.0\%}};
+\node[font=\tiny, text=gray!45!black] at (114.8,-26.5) {lost before training starts: 36.0\%};
+\draw[riskhigh, dashed, line width=0.8pt] (108.5,-32) -- (108.5,-20.5);
+\node[anchor=south, font=\tiny, text=riskhigh!70!black] at (108.5,-20.2)
+  {full-document TF--IDF baseline already scores 0.775};
+\node[anchor=north, font=\tiny, text=gray!45!black] at (0,-30.6) {0\%};
+\node[anchor=north, font=\tiny, text=gray!45!black] at (140,-30.6) {100\%};
+\end{tikzpicture}
+\caption{Why the measured retrieval ceiling settled the design.}
+\label{fig:ceiling}
+\end{figure}
+
+\begin{table}[ht]
+\centering
+\caption{Retrieval hit-rate on positive (contract, category) pairs.}
+\label{tab:retrieval}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Query strategy} & \textbf{Top-$k$} & \textbf{Hit-rate}\\
+\midrule
+CUAD question text        & 1 & 38.6\%\\
+Category name             & 1 & 44.6\%\\
+\textbf{Category name}    & \textbf{3} & \textbf{64.0\%}\\
+Name + question           & 3 & 61.5\%\\
+\bottomrule
+\end{tabular}
+
+{\footnotesize\singlespacing \emph{Note.} The hit-rate is the recall ceiling a retrieval-based design would impose.\par}
+\end{table}
+
+\subsection{Sliding-window max-pooling (multiple-instance learning)}
+\label{sec:mil}
+To get rid of the ceiling we trained a \emph{window-level} classifier instead: given the pair (category question, window), predict whether that window contains a clause of the category. Figure~\ref{fig:windows} shows how the windows are generated. A 2{,}000-character window advancing in 1{,}500-character steps leaves a 500-character overlap between neighbours, and that overlap is what guarantees no clause can fall between two windows and disappear: the median annotated clause is 196 characters (Section~\ref{sec:eda}), comfortably shorter than the overlap, so every clause lands wholly inside at least one window.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize,
+  dim/.style={{Stealth[length=1.6mm]}-{Stealth[length=1.6mm]}, gray!65!black, line width=0.5pt},
+  win/.style={draw=blue!55, fill=blue!10, rounded corners=1pt},
+  poswin/.style={draw=risklow!85, fill=risklow!20, rounded corners=1pt}]
+
+% ---- overlap band (behind everything) -----------------------------------
+\fill[orange!30, opacity=0.7] (15,-42) rectangle (20,0);
+
+% ---- the document -------------------------------------------------------
+\fill[gray!12] (0,0) rectangle (110,7);
+\draw[gray!55] (0,0) rectangle (110,7);
+\fill[riskhigh!60] (61,0) rectangle (63,7);
+\node[anchor=west, text=gray!50!black, font=\tiny] at (2,3.5) {contract text};
+\node[anchor=west] at (111.5,3.5) {$\cdots$};
+\node[anchor=west, text=riskhigh!70!black, font=\tiny] at (70,11)
+  {gold clause --- 196 chars, drawn to scale};
+\draw[riskhigh!75, -{Stealth[length=1.6mm]}] (69.5,10.6) -- (63.4,7.4);
+
+% ---- staircase of windows ----------------------------------------------
+\foreach \i/\y in {0/-5, 1/-13, 2/-21} {
+  \draw[win] (15*\i,\y-5) rectangle (15*\i+20,\y);
+  \node[text=blue!45!black, font=\tiny] at (15*\i+10,\y-2.5) {$w_{\i}$};
+}
+\foreach \i/\y in {3/-29, 4/-37} {
+  \draw[poswin] (15*\i,\y-5) rectangle (15*\i+20,\y);
+  \node[text=risklow!35!black, font=\tiny] at (15*\i+10,\y-2.5) {$w_{\i}$};
+  \fill[riskhigh!60] (61,\y-5) rectangle (63,\y);
+}
+\node[anchor=west, text=risklow!30!black, font=\tiny, align=left] at (86,-36)
+  {both windows contain\\the clause in full};
+\draw[risklow!70, -{Stealth[length=1.6mm]}] (85.5,-34.5) -- (64,-31.5);
+\draw[risklow!70, -{Stealth[length=1.6mm]}] (85.5,-37.5) -- (64,-39.5);
+
+% ---- dimensions ---------------------------------------------------------
+\draw[dim] (0,-2.5) -- (20,-2.5);
+\node[anchor=west, font=\tiny, text=gray!45!black] at (22,-2.5)
+  {window $=$ 2{,}000 characters};
+\draw[dim] (0,-10.5) -- (15,-10.5);
+\node[anchor=west, font=\tiny, text=gray!45!black] at (22,-10.5)
+  {stride $=$ 1{,}500 characters};
+\draw[gray!55, dashed, line width=0.4pt] (15,-44) -- (15,7.5);
+\draw[gray!55, dashed, line width=0.4pt] (20,-44) -- (20,7.5);
+\node[anchor=north, align=center, font=\tiny, text=orange!50!black] at (17.5,-44)
+  {overlap $=$ 500 chars, at every step};
+\node[font=\normalsize, text=gray!55!black] at (67.5,-45.5) {$\vdots$};
+\node[anchor=west, font=\tiny, text=gray!45!black] at (71,-45.5)
+  {continuing to $w_{21}$ for a median-length contract};
+\end{tikzpicture}
+\caption{Sliding-window generation: 2{,}000-character windows, 1{,}500-character stride.}
+\label{fig:windows}
+\end{figure}
+
+Training labels come from the gold character offsets --- any window containing an annotated span is positive, and for each (contract, category) bag we sample two negative windows. Using gold offsets this way is ordinary supervision, not leakage: the labels shape the training targets, but they never touch the model's input, and nothing gold is used at inference. From the 408 training contracts this gives 53{,}662 window examples (39.2\% positive).
+
+At inference the model scores \emph{every} window of the contract, and the document-level prediction is simply the maximum window probability --- the multiple-instance learning decision rule, drawn in Figure~\ref{fig:mil}. The document is a \emph{bag} of window instances; the bag is positive if any instance is positive; and $\max$ implements exactly that rule. Since the windows tile the whole document with overlap, every present clause is reachable, so the recall ceiling disappears by construction. The price is precision, and Figure~\ref{fig:mil} also shows why: the maximum is taken over every window, so a single spurious window anywhere in the document is enough to flip the whole contract to positive. With a median of 22 windows per contract and a mean of 35, the chance that some window crosses the 0.5 threshold by accident grows with document length --- long contracts are structurally more likely to produce a false positive than short ones, independently of what they actually contain.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize,
+  win/.style={draw=gray!55, fill=gray!10, rounded corners=1pt,
+              minimum width=15mm, minimum height=6mm, inner sep=0pt},
+  hot/.style={draw=riskhigh, fill=riskhigh!15, rounded corners=1pt,
+              minimum width=15mm, minimum height=6mm, inner sep=0pt, line width=0.7pt},
+  enc/.style={draw=blue!55, fill=blue!12, rounded corners=1pt,
+              minimum width=24mm, minimum height=6mm, inner sep=0pt},
+  arr/.style={-{Stealth[length=1.8mm]}, gray!60!black, line width=0.5pt}
+]
+% rows: w1, w2 (firing), w3, vdots, wn
+\node[win] (w1) at (9,0)    {$w_1$};
+\node[hot] (w2) at (9,-9)   {$w_2$};
+\node[win] (w3) at (9,-18)  {$w_3$};
+\node[font=\normalsize, text=gray!55!black] at (9,-25) {$\vdots$};
+\node[win] (wn) at (9,-32)  {$w_n$};
+
+\node[enc] (e1) at (45,0)   {DistilBERT};
+\node[enc] (e2) at (45,-9)  {DistilBERT};
+\node[enc] (e3) at (45,-18) {DistilBERT};
+\node[font=\normalsize, text=gray!55!black] at (45,-25) {$\vdots$};
+\node[enc] (en) at (45,-32) {DistilBERT};
+
+\node (p1) at (77,0)   {$p_1 = 0.03$};
+\node[text=riskhigh!70!black] (p2) at (77,-9) {$\mathbf{p_2 = 0.91}$};
+\node (p3) at (77,-18) {$p_3 = 0.07$};
+\node[font=\normalsize, text=gray!55!black] at (77,-25) {$\vdots$};
+\node (pn) at (77,-32) {$p_n = 0.11$};
+
+\foreach \a/\b in {w1/e1, w2/e2, w3/e3, wn/en} \draw[arr] (\a) -- (\b);
+\foreach \a/\b in {e1/p1, e2/p2, e3/p3, en/pn} \draw[arr] (\a) -- (\b);
+
+% max node
+\node[draw=blue!65, fill=blue!15, rounded corners=1pt, minimum width=16mm,
+      minimum height=9mm, inner sep=1pt, align=center] (mx) at (103,-16)
+      {$\max\limits_i p_i$};
+\foreach \p in {p1,p2,p3,pn} \draw[arr] (\p) -- (mx);
+
+\node[anchor=west, align=left] (out) at (114,-16)
+  {$p_{\text{doc}} = 0.91 \geq 0.5$\\[1pt] $\Rightarrow$ category \textbf{present}};
+\draw[arr] (mx) -- (out);
+
+% annotations
+\node[anchor=north, align=center, font=\tiny, text=gray!45!black] at (60,-37)
+  {one model, shared weights --- the input is the pair (category question $q_c$, window $w_i$)};
+\end{tikzpicture}
+\caption{The multiple-instance learning rule: maximum over window scores.}
+\label{fig:mil}
+\end{figure}
+
+\subsection{The conjunctive ensemble}
+When we compared the two models category by category, they turned out to be \emph{complementary}: the transformer wins on semantically subtle categories (for example \emph{No-Solicit of Employees} and \emph{Liquidated Damages}), while the baseline wins on keyword-heavy ones. We combine them with \textbf{parameter-free} rules --- AND ($\min$ of the two probabilities), OR ($\max$), and AVG (mean) --- chosen deliberately because they contain nothing tunable, so nothing can overfit to the test set. Figure~\ref{fig:ensemble_rule} lays out the decision. The AND rule, which reports a clause only when both models agree, filters out each model's uncorrelated false positives: for a spurious detection to survive, the lexical model and the windowed transformer must both make the same mistake on the same contract and category, and their mistakes are largely independent. That recovers exactly the precision that max-pooling loses.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize,
+  mod/.style={draw=gray!60, fill=gray!10, rounded corners=1pt, text width=30mm,
+              align=center, minimum height=11mm, inner sep=1.5pt},
+  rule/.style={draw=gray!60, fill=gray!8, rounded corners=1pt, text width=24mm,
+               align=center, minimum height=8mm, inner sep=1.5pt},
+  pick/.style={rule, draw=blue!70, fill=blue!18, line width=0.8pt},
+  arr/.style={-{Stealth[length=1.8mm]}, gray!60!black, line width=0.5pt}
+]
+\node[draw=gray!60, fill=orange!12, rounded corners=1pt, text width=16mm, align=center,
+      minimum height=9mm, inner sep=1.5pt] (doc) at (9,0) {contract\\text};
+
+\node[mod] (bl) at (46,15) {TF--IDF $+$ LR\\{\tiny reads the \emph{whole} document}};
+\node[mod] (tr) at (46,-15) {DistilBERT MIL\\{\tiny max-pools over windows}};
+\draw[arr] (doc) -- (bl);
+\draw[arr] (doc) -- (tr);
+
+\node (pa) at (76,15)  {$p_{\text{tfidf}}$};
+\node (pb) at (76,-15) {$p_{\text{trans}}$};
+\draw[arr] (bl) -- (pa);
+\draw[arr] (tr) -- (pb);
+
+\coordinate (j) at (86,0);
+\draw[gray!60!black, line width=0.5pt] (pa) -- (86,15) -- (j);
+\draw[gray!60!black, line width=0.5pt] (pb) -- (86,-15) -- (j);
+\fill[gray!60!black] (j) circle (0.6mm);
+
+\node[pick] (rand) at (110,15)  {\textbf{AND}\\[1pt]$\min(p_a,p_b) \geq 0.5$};
+\node[rule] (ravg) at (110,0)   {AVG\\[1pt]$\tfrac{1}{2}(p_a{+}p_b) \geq 0.5$};
+\node[rule] (ror)  at (110,-15) {OR\\[1pt]$\max(p_a,p_b) \geq 0.5$};
+\foreach \r in {rand,ravg,ror} \draw[arr] (j) -- (\r);
+
+\node[anchor=west, font=\tiny, text=blue!45!black] at (124,15) {\textbf{0.776}};
+\node[anchor=west, font=\tiny, text=gray!45!black]  at (124,0)  {0.718};
+\node[anchor=west, font=\tiny, text=gray!45!black]  at (124,-15){0.696};
+\node[anchor=south, font=\tiny, text=gray!45!black, align=center] at (130,20)
+  {held-out\\micro-F1};
+
+\node[anchor=north, align=center, font=\tiny, text=gray!45!black] at (67,-24)
+  {All three rules are \textbf{parameter-free}: there is nothing to fit, so the test set cannot tune them.
+   AND fires only when \emph{both} models\\ cross the threshold, so a false positive has to be made
+   twice, independently, to survive.};
+\end{tikzpicture}
+\caption{The conjunctive ensemble and its three parameter-free rules.}
+\label{fig:ensemble_rule}
+\end{figure}
+
+\section{Stage 2B: Span Extraction}
+Here the transformer has no substitute --- a bag-of-words model cannot point at character positions. We fine-tune \texttt{DistilBertForQuestionAnswering}: the input is (CUAD question, window text) and the model predicts start and end token positions. Character offsets from \texttt{CUAD\_v1.json} are converted to token labels through the tokenizer's offset mapping.
+
+Two different window sizes are in play in this thesis, and it is worth being explicit about the difference, since mixing them up makes the whole design look inconsistent. The 2{,}000-character window of Section~\ref{sec:mil} is a \emph{presence} window: it tiles the document blindly, because at that point we do not know where anything is. The window used here is a \emph{focus} window: 1{,}200 characters, and it is not tiled at all but re-centred on the gold answer, positioned so the answer begins roughly 150 characters in. Figure~\ref{fig:focus} draws the two on the same scale. The reason for the smaller, re-centred window is purely mechanical: it guarantees the target span survives truncation at the model's 320-token limit, which a blind 2{,}000-character window does not --- an answer sitting at the tail of a presence window would simply be cut off, and the model would be trained on an example whose answer is not present. Note also that this stage has no length ceiling at all: extraction happens \emph{inside} a window that Stage 2A has already flagged as relevant.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize,
+  dim/.style={{Stealth[length=1.6mm]}-{Stealth[length=1.6mm]}, gray!65!black, line width=0.5pt}]
+
+% ---- presence window (Stage 2A) ----------------------------------------
+\fill[blue!10] (0,0) rectangle (120,8);
+\draw[blue!55] (0,0) rectangle (120,8);
+\fill[riskhigh!35] (54,0) rectangle (65.8,8);
+\draw[riskhigh]    (54,0) rectangle (65.8,8);
+\node[anchor=west, align=left, font=\tiny, text=gray!45!black] at (123,4)
+  {\textbf{Stage 2A}\\presence window\\2{,}000 chars, tiled};
+\node[anchor=south, font=\tiny, text=riskhigh!70!black] at (59.9,11.6) {gold answer};
+\draw[riskhigh!75, -{Stealth[length=1.6mm]}] (59.9,11.2) -- (59.9,8.6);
+
+% ---- focus window (Stage 2B) -------------------------------------------
+\fill[risklow!25] (45,-16) rectangle (117,-8);
+\draw[risklow!85] (45,-16) rectangle (117,-8);
+\fill[riskhigh!35] (54,-16) rectangle (65.8,-8);
+\draw[riskhigh]    (54,-16) rectangle (65.8,-8);
+\node[anchor=west, align=left, font=\tiny, text=gray!45!black] at (123,-12)
+  {\textbf{Stage 2B}\\focus window\\1{,}200 chars, re-centred};
+
+% ---- alignment guides + offset -----------------------------------------
+\draw[gray!55, dashed, thin] (45,-16) -- (45,-2);
+\draw[gray!55, dashed, thin] (54,-16) -- (54,-1);
+\draw[dim] (45,-4.2) -- (54,-4.2);
+\node[anchor=west, font=\tiny, text=gray!45!black] at (56,-4.2)
+  {150 chars --- the answer never sits on the boundary};
+
+% ---- footer ------------------------------------------------------------
+\node[anchor=north, align=center, font=\tiny, text=gray!45!black] at (60,-21)
+  {$\text{focus start} = \max(0,\ \text{answer start} - 150)$\quad ---\quad
+   1{,}200 chars fits inside the 320-token limit; 2{,}000 does not.};
+\end{tikzpicture}
+\caption{Presence window (Stage 2A) against focus window (Stage 2B).}
+\label{fig:focus}
+\end{figure}
+
+\section{Stage 1: Plain-Language Summarization}
+CUAD gives us clauses but no plain-English rewrites to learn from, so we wrote our own seed: \textbf{41 gold templates}, one carefully phrased single-sentence summary per category, framed from the weaker party's perspective. For \emph{Anti-Assignment}, for instance, the template reads ``You cannot transfer this contract to someone else without permission.'' Every extracted training clause is paired with its category's template, which yields 11{,}156 training pairs, and FLAN-T5-small is fine-tuned on the prompt ``\texttt{summarize in plain English: <clause>}''.
+
+We evaluate with ROUGE-L \emph{and} with a side-by-side zero-shot-versus-fine-tuned comparison on the same clauses. The double evaluation is deliberate. With only 41 unique target sentences, a model can earn a high ROUGE score just by learning to classify the clause and emit its template word for word, without doing any real summarization. Chapter 6 shows that this is exactly what happens, and we report it as such.
+
+\section{Category-Level Risk Prioritization}
+\label{sec:risk}
+A naming point first, because it governs what the rest of this section may claim. The system does not read a clause and judge how dangerous \emph{that} clause is. It identifies which of the 41 categories a contract contains and attaches a fixed level to the category. Those are different tasks, and conflating them would overstate the system considerably: our layer says \emph{``contracts containing a non-compete deserve attention''}, never \emph{``this non-compete is unusually harsh''}. We therefore call it \textbf{category-level risk prioritization} rather than risk classification throughout.
+
+\subsection{Assignment criteria}
+\label{sec:riskcriteria}
+The levels were not assigned by intuition alone, and the criteria we used should be stated so that a reader --- or a reviewing lawyer --- can disagree with a specific assignment on specific grounds. Each category was scored on five dimensions, from the weaker party's side:
+
+\begin{enumerate}[itemsep=3pt]
+  \item \textbf{Financial exposure.} Can this clause cost money, and is the amount bounded? Unbounded exposure is the strongest single indicator of High.
+  \item \textbf{Irreversibility.} If the term operates, can the position be recovered? Losing ownership of intellectual property or granting a perpetual licence cannot be undone by later negotiation; a notice period can.
+  \item \textbf{Restriction of future freedom.} Does the clause constrain what the party may do \emph{after} the contract, or outside it --- whom it may work for, sell to, or hire?
+  \item \textbf{Asymmetry.} Does the obligation fall on one side only? A mutual confidentiality duty is less dangerous than a one-way indemnity of identical wording.
+  \item \textbf{Duration and survival.} Does the obligation outlive the agreement?
+\end{enumerate}
+
+The rule we applied: \textbf{High} if the category is unbounded on dimension~1, or irreversible on dimension~2, or restricts post-term freedom on dimension~3. \textbf{Low} if the category is informational --- it records a fact (a date, a name, a governing jurisdiction) or confers a benefit --- and scores on none of the five. \textbf{Medium} otherwise: a real obligation, bounded and reversible. This is why \emph{Cap on Liability} is Medium and not Low despite sounding protective (it bounds recovery, which can under-compensate a genuine loss), and why \emph{Governing Law} is Low despite being consequential in litigation (it is a fact about the contract, not an obligation falling asymmetrically on the signer).
+
+The eight High categories fall into three groups, each triggered by a different dimension: money you could owe without limit (\emph{Uncapped Liability}, \emph{Liquidated Damages}, \emph{Minimum Commitment}, \emph{Most Favored Nation}); something you cannot get back (\emph{IP Ownership Assignment}, \emph{Irrevocable/Perpetual License}); and freedom to earn later (\emph{Non-Compete}, \emph{Exclusivity}). The full clause-by-clause table with reasons is in Appendix~\ref{app:taxonomy}, and Figure~\ref{fig:riskdist} shows the distribution.
+
+\subsection{Who is the ``weaker party''?}
+\label{sec:weaker}
+This phrase does real work in the taxonomy and it is ambiguous, so we should say how we resolved it. The weaker party is not a fixed role --- in a distribution agreement it may be the distributor, in a licence the licensee, in a franchise the franchisee --- and in a genuinely balanced agreement between equals there may be no weaker party at all.
+
+We operationalized it as follows: \textbf{the party with less bargaining power over the drafting}, which in the CUAD corpus is in practice the party that did not write the agreement. Where that is genuinely unclear from the category alone, we scored from the position of \textbf{the party on whom the obligation falls} --- so \emph{Non-Compete} is scored from the side restrained, \emph{Audit Rights} from the side audited, \emph{License Grant} from the side receiving. This is a heuristic, and it has a known failure mode worth stating: a clause that is High-risk for one side is often protective for the other, so the same badge shown to a licensor and a licensee is not equally informative. A per-instance system would resolve the perspective from the clause text; ours cannot, and assumes the user is the party with less power. That assumption is stated in the application interface.
+
+\subsection{Why a lookup table rather than a learned score}
+The taxonomy is a transparent lookup rather than a model output, and that is deliberate: it can be audited line by line, its reasoning is written down per category, and it cannot drift silently between versions. The cost of that choice is precisely the limitation named at the top of this section --- it cannot distinguish a \$10{,}000 liability cap from a \$10{,}000{,}000 one. Section~\ref{sec:riskeval} measures a second cost we did not anticipate: because the levels are fixed per category, the system's error profile is set entirely by which \emph{categories} it detects well, and the categories carrying High risk turn out to be among the ones it detects worst.
+
+
+\subsection{Provenance and validation status of the taxonomy}
+\label{sec:taxvalid}
+This taxonomy is the main thing this thesis adds on top of CUAD, and it is also the component with the weakest evidential backing, so its provenance should be stated exactly rather than left to be inferred.
+
+\textbf{Who wrote it.} All 41 assignments were made by the three of us. We are computer science students, not lawyers. The levels were assigned by reasoning about consequences for the weaker party --- can this clause cost you unbounded money, take away something you cannot get back, or restrict what you may do afterwards --- and cross-checked against the CUAD category descriptions, but they rest on our judgement alone. No legal professional has reviewed them.
+
+\textbf{Why that matters more here than elsewhere.} Every other component in this thesis is measured against gold annotations that experts produced. This one is not measured against anything. It also has the most direct route to the user: the level decides what Clausify tells a signer to worry about first, so an error here is not a lower score in a table, it is a warning that does not appear. A category we have marked Medium that a practitioner would mark High is a silent failure of the deployed system.
+
+\textbf{The check that is needed, and its status.} What would establish face validity is a review by someone with legal training: hand over the 41 categories with our level and our stated reason, ask for agreement or disagreement on each, and report the disagreement count \emph{whatever it turns out to be}. We have prepared that review instrument --- it is in the repository as \texttt{review/risk\_taxonomy\_review\_sheet.csv}, one row per category with columns for the reviewer's own level and comment --- and it takes a reviewer roughly half an hour.
+
+A single reviewer would establish face validity; \emph{two or three, reviewing independently}, would allow something stronger, and the difference is worth explaining. Raw percentage agreement is a poor statistic on this taxonomy because the levels are unevenly distributed: 22 of the 41 categories are Medium, so a reviewer who answered ``Medium'' throughout would score 54\% agreement while contributing no information at all. Chance-corrected agreement --- Cohen's $\kappa$ for a pair, Fleiss' $\kappa$ across three or more raters --- removes exactly that artefact, and is what we would report. The repository includes \texttt{review/agreement.py}, which takes the completed sheets and prints per-reviewer agreement, both kappas, and the list of disputed categories, so that the analysis is fixed in advance and cannot be shaped by the result.
+
+\emph{At the time of writing this review has not been carried out, and no number from it is reported anywhere in this thesis.} Until it is, the taxonomy should be read as a documented, auditable, and explicitly unvalidated design artefact: its virtue is that every assignment is written down with a reason and can be argued with line by line, not that anyone qualified has yet agreed with it.
+%% ==================================================================
+%% TODO BEFORE FINAL SUBMISSION -- REPLACE THE ITALIC PARAGRAPH ABOVE
+%%
+%% Send review/REVIEWER_REQUEST.md + risk_taxonomy_review_sheet.csv to a
+%% law student or practitioner. Then delete the italic sentence above and
+%% paste ONE of the following, filling in the numbers.
+%%
+%% --- IF TWO OR MORE REVIEWERS COMPLETED THE SHEET -----------------
+%% Run: python review/agreement.py reviewer1.csv reviewer2.csv
+%%
+%% "The 41 assignments were reviewed independently by <N> reviewers
+%%  (<roles>) in <month year>. Agreement with our levels was <X>% and <Y>%;
+%%  Cohen's kappa against our taxonomy was <k1> and <k2>, and reviewer-to-
+%%  reviewer agreement was <k3> (<interpretation>). The <M> disputed
+%%  categories were <list>. We adopted <K> of these changes; Appendix A
+%%  reflects the revised levels. We report the disagreements we did not
+%%  adopt as well, with our reason in each case."
+%%
+%% --- IF ONLY ONE REVIEWER WAS AVAILABLE ---------------------------
+%% Run: python review/agreement.py reviewer1.csv
+%%
+%% "The 41 assignments were reviewed by <name/role> in <month year>. The
+%%  reviewer agreed with <X> of 41 (<Y>%); the <M> disputed categories were
+%%  <list>, of which we adopted <K>. Only one reviewer was available in the
+%%  time before submission, so inter-rater statistics (Cohen's or Fleiss'
+%%  kappa) could not be computed and no chance-corrected agreement figure is
+%%  reported. Raw agreement on a three-level scale where 22 of 41 categories
+%%  are Medium should be read with that in mind."
+%%
+%% Report the disagreements WHATEVER they are. A low agreement figure,
+%% honestly reported, is a stronger thesis than no figure at all.
+%% ==================================================================
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.62\textwidth]{risk_distribution.png}
+\caption{The 41 clause categories across the three risk levels.}
+\label{fig:riskdist}
+\end{figure}
+
+\section{Leakage Discipline}
+\label{sec:leakage}
+With a dataset this small, leakage is the most dangerous way to fool ourselves, so we kept one explicit rule the whole way through: \emph{labels may shape training targets, but they may never shape the input a model sees or any inference-time selection}. In practice this meant: the split is contract-level; retrieval queries use only the category or question; gold offsets label training windows but never build inputs or pick inference windows; and the ensemble rules are parameter-free, so the test set cannot tune them.
+
+One consequence is visible in Figure~\ref{fig:focus} and deserves stating outright, because it is the one place where the rule looks like it might be broken. The focus window is positioned using the gold answer offset, which is a label. That is legitimate only because it happens exclusively at \emph{training} time: it decides which text becomes a training example, never what the model reads at inference. At inference there is no gold offset, and Stage 2B simply runs over the presence window that Stage 2A selected. If re-centring were applied at inference the evaluation would be meaningless, since the model would be handed a window built around the answer it is supposed to find.
+
+\section{End-to-End Data Flow}
+Figure~\ref{fig:pipeline} names the stages; Figure~\ref{fig:dataflow} adds what actually moves between them. The shapes shown are for one contract of median length passing through the deployed system.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize,
+  st/.style={draw=blue!55, fill=blue!8, rounded corners=2pt, text width=40mm,
+             align=center, minimum height=8mm, inner sep=1.5pt},
+  ad/.style={st, draw=orange!75, fill=orange!15},
+  arr/.style={-{Stealth[length=2mm]}, gray!60!black, line width=0.6pt},
+  op/.style={font=\tiny, text=gray!45!black, anchor=west},
+  dat/.style={font=\tiny, anchor=west, text width=76mm}
+]
+\node[st] (s1) at (24,0)   {Contract text};
+\node[st] (s2) at (24,-16) {Sliding windows};
+\node[st] (s3) at (24,-32) {Presence scoring};
+\node[st] (s4) at (24,-48) {Presence vector};
+\node[st] (s5) at (24,-64) {Extracted spans};
+\node[ad] (s6) at (24,-80) {Risk $+$ plain English};
+\node[ad] (s7) at (24,-96) {Risk-prioritized report};
+
+\foreach \a/\b in {s1/s2, s2/s3, s3/s4, s4/s5, s5/s6, s6/s7} \draw[arr] (\a) -- (\b);
+
+\node[op] at (26,-8)  {windowing: 2{,}000 chars, stride 1{,}500};
+\node[op] at (26,-24) {$\times$ 41 category questions; DistilBERT $+$ TF--IDF};
+\node[op] at (26,-40) {$\max$ over windows, then AND with TF--IDF};
+\node[op] at (26,-56) {DistilBERT-QA, flagged categories only};
+\node[op] at (26,-72) {taxonomy lookup $+$ FLAN-T5-small};
+\node[op] at (26,-88) {sort by risk level, then confidence};
+
+\node[dat] at (50,0)   {\texttt{str} --- 33{,}143 characters (median)};
+\node[dat] at (50,-16) {\texttt{list[str]} --- $n = 22$ windows (median; mean 35, max 226)};
+\node[dat] at (50,-32) {\texttt{float[n,\,41]} window scores $+$ \texttt{float[41]} document scores};
+\node[dat] at (50,-48) {\texttt{bool[41]} --- about 13 categories flagged present};
+\node[dat] at (50,-64) {\texttt{list[(category,\,char\_start,\,char\_end,\,text)]}};
+\node[dat] at (50,-80) {\texttt{list[(category,\,High\,$|$\,Med\,$|$\,Low,\,reason,\,sentence)]}};
+\node[dat] at (50,-96) {grouped by risk level, rendered in \emph{Clausify} (Chapter~7)};
+
+\draw[gray!45, dashed, line width=0.4pt] (47,4) -- (47,-100);
+\node[anchor=south, font=\tiny, text=gray!45!black] at (24,5) {\textbf{stage}};
+\node[anchor=south west, font=\tiny, text=gray!45!black] at (50,5) {\textbf{data leaving that stage}};
+\end{tikzpicture}
+\caption{Data shapes crossing each stage boundary.}
+\label{fig:dataflow}
+\end{figure}

@@ -1,0 +1,162 @@
+\chapter{Model Training}
+
+All models were trained on the 408 training contracts (80\%) only. Training ran on a single Apple-Silicon laptop using the MPS (Metal) backend with \texttt{torch} 2.8 and \texttt{transformers} 5.x; the summarizer ran on CPU for the memory reasons explained in Section~\ref{sec:engineering}. Table~\ref{tab:hyper} collects the configurations.
+
+\begin{table}[ht]
+\centering
+\caption{Training configurations for the three models.}
+\label{tab:hyper}
+\small
+\begin{tabular}{lccc}
+\toprule
+ & \textbf{Presence (MIL)} & \textbf{Span (QA)} & \textbf{Summarizer}\\
+\midrule
+Backbone            & DistilBERT-base & DistilBERT-base & FLAN-T5-small\\
+Task head           & Sequence classification & QA (start/end) & Seq2seq LM\\
+Training examples   & 24{,}000 (of 53{,}662) & 8{,}000 (of 11{,}156) & 4{,}000 (of 11{,}156)\\
+Max input length    & 256 tokens & 320 tokens & 256 in / 48 out\\
+Epochs              & 2 & 2 & 2\\
+Batch size          & 16 & 16 & 8\\
+Learning rate       & $2\times10^{-5}$ & $3\times10^{-5}$ & $3\times10^{-4}$\\
+Device              & MPS & MPS & CPU\\
+Wall-clock          & $\approx$49--52 min & $\approx$23 min & $\approx$8 min\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Validation Protocol, and Where the Hyperparameters Came From}
+\label{sec:valprotocol}
+An examiner is entitled to ask how the settings in Table~\ref{tab:hyper} were chosen, because if any of them were selected by trying variants and keeping whichever scored best on the 20\% test set, then every number in Chapter 6 is optimistic and the held-out evaluation is not held out. This section answers that directly, including one place where our practice was worse than it should have been.
+
+\subsection{What was tuned, and what was not}
+\textbf{Nothing in Table~\ref{tab:hyper} was tuned.} Every hyperparameter is either a published default for the backbone or a value fixed by an argument made before training, and no variant of any of them was ever compared on the test set. Concretely:
+
+\begin{itemize}[itemsep=3pt]
+  \item \textbf{Learning rates, batch sizes, epochs} ($2\times10^{-5}$, $3\times10^{-5}$, $3\times10^{-4}$; 16/16/8; 2 epochs) are the standard fine-tuning defaults for DistilBERT and T5-family models. We ran each configuration once. No sweep was performed --- which protects the test set, but also means we have no evidence that these are good values, only that they are conventional ones.
+  \item \textbf{Window 2{,}000 characters, stride 1{,}500} follows from a measurement on the \emph{training} data, not from tuning: the 500-character overlap has to exceed the median annotated clause (196 characters) so that no clause falls between windows (Section~\ref{sec:mil}). Any window/stride pair satisfying that would do; we did not search for the best one.
+  \item \textbf{Two negative windows per bag} is a class-balance decision, chosen to hold the positive rate near 39\% rather than let the vast majority of windows be negative. Not tuned.
+  \item \textbf{Max-pooling} was chosen because it \emph{is} the multiple-instance decision rule, not because it beat alternatives --- we never tried alternatives. Section~\ref{sec:pooling} corrects that omission after the fact.
+  \item \textbf{Threshold 0.5} is the default decision boundary of a two-class softmax. It was never chosen, examined, or adjusted. Section~\ref{sec:threshold} shows, after the fact, that it is a poor operating point for the max-pooled transformer.
+\end{itemize}
+
+The honest summary is that this project avoided test-set tuning by not tuning at all. That is a real guarantee about the validity of the held-out numbers, and simultaneously a limitation: the transformer may be losing to the baseline partly because nobody ever looked for better settings for it. We record it in both directions.
+
+\subsection{The validation sets actually used}
+Table~\ref{tab:valsets} states, per model, what was held out during training and what it was used for.
+
+\begin{table}[ht]
+\centering
+\caption{Validation arrangements during training.}
+\label{tab:valsets}
+\small
+\begin{tabular}{p{2.6cm} p{4.5cm} p{6.2cm}}
+\toprule
+\textbf{Model} & \textbf{Validation data} & \textbf{Use}\\
+\midrule
+Presence (MIL) & 5\% of the \emph{training} windows, split off before training & Monitoring only. Clean: no test contract contributes.\\
+\addlinespace
+Span (QA) & None (\texttt{eval\_strategy="no"}) & No validation loss exists for this model.\\
+\addlinespace
+Summarizer (deployed checkpoint) & None & The checkpoint used in every reported result and in Clausify was trained with no evaluation set.\\
+\bottomrule
+\end{tabular}
+
+{\footnotesize\singlespacing \emph{Note.} ``Monitoring only'' means the loss was printed and plotted but never used to select a checkpoint, stop early, or change a setting --- all three runs used \texttt{save\_strategy="no"} and kept the final-step weights.\par}
+\end{table}
+
+\subsection{One thing we got wrong}
+The exploratory notebook run of the summarizer --- the run whose loss curve is plotted in Figure~\ref{fig:sumloss} --- used 300 clauses \emph{drawn from the test split} as its evaluation set. That is the wrong data to monitor on, and we should not have done it.
+
+Two things limit the damage, and we state them without treating either as an excuse. First, the run was configured with \texttt{save\_strategy="no"} and no early stopping, so the numbers it printed could not select a checkpoint; nothing about the model depended on them. Second, the deployed summarizer was rebuilt by \texttt{build\_artifacts.py} with \emph{no} evaluation set at all, and it is that checkpoint --- not the notebook's --- that produced every summarization result in Chapter 6. So no reported score was computed by a model that had been selected using test data.
+
+What remains is that the validation loss quoted in Section~\ref{sec:sumtrain} (0.096 $\to$ 0.075) is a loss on held-out \emph{test} clauses mislabelled as validation, and a reader should discount it accordingly. We have left the figure in place with this correction attached rather than quietly regenerating it, because the mistake is more instructive than a clean curve would be: with a small dataset and three models it is easy to reach for ``the other split'' when a validation set is needed, and the discipline that catches it is writing down, per model, exactly what was held out --- which is what Table~\ref{tab:valsets} now does.
+
+\section{Optimization Schedule}
+Table~\ref{tab:hyper} gives the peak learning rates, but a peak rate on its own does not describe how a run behaved --- the schedule that decays it does. All three models use the same optimizer configuration: AdamW with a \textbf{linear decay} schedule, \textbf{no warmup}, and gradient-norm clipping at 1.0. Figure~\ref{fig:lrsched} plots the three resulting schedules. The presence and span settings were read back from the \texttt{training\_args.bin} saved beside each checkpoint rather than from our notes, so what is plotted is what actually ran.
+
+Two choices are worth defending. Skipping warmup is normally risky, but these are short fine-tuning runs (1{,}000--3{,}000 steps) starting from pre-trained weights at small learning rates, where the usual justification for warmup --- stabilizing early updates in a randomly initialized model --- barely applies; the smooth loss curves in Figures~\ref{fig:presloss} and~\ref{fig:sumloss} show no early instability. Clipping at a gradient norm of 1.0 was left on throughout, which matters more than it might seem on the MPS backend: it is the guard that keeps a single bad batch from producing the kind of divergence we hit with DeBERTa-v3 (Section~\ref{sec:engineering}).
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{lr_schedule.png}
+\caption{Learning-rate schedules for the three training runs.}
+\label{fig:lrsched}
+\end{figure}
+
+We should be straightforward about one limitation, and about how far we were able to repair it. A per-step gradient-norm trace is the natural companion to these curves, and it is the one diagnostic that lets a reader confirm the runs stayed numerically healthy instead of inferring it from the loss. We did not retain it for the three original runs: the intermediate checkpoint directories were cleared after training, so only the final weights and the loss values quoted below survive from them.
+
+We did retain it for the full-data presence run of Section~\ref{sec:budget}, which uses the identical optimizer configuration, and it turns out to say something the loss curves do not. Across the 63 logged points the gradient norm ranges from 0.55 to 11.97 with a median of 4.66, and \textbf{98.4\% of logged steps exceed the clipping threshold of 1.0}. Nothing diverged --- there are no NaNs, no spikes into the hundreds, and the loss falls smoothly throughout --- so the runs were healthy in the sense that matters. But clipping here is not the rare safety net the phrase ``gradient clipping'' usually implies. It is active on essentially every step, which means the effective update direction is being renormalized continuously and the nominal learning rate of $2\times10^{-5}$ overstates the step size actually taken. We report this because it slightly weakens the warmup argument made above: part of what kept the early updates stable was almost certainly the clipping rather than the small learning rate, and we would not want a reader to take ``no warmup was fine'' as a general recommendation on the strength of our smooth loss curves alone. Re-running the span and summarizer trainings with the same logging would close the remaining gap in about half an hour of wall-clock time.
+
+\section{Presence Classifier}
+The TF--IDF + logistic-regression baseline trains in under a minute. On the 20\% test set it reaches micro-F1 0.775, weighted-F1 0.777, macro-F1 0.572 over all 41 categories, and 0.666 over the 34 categories that have at least ten test positives. The gap between micro and macro comes from the near-few-shot tail of the dataset, not from a modelling failure.
+
+The window-level DistilBERT was trained on a stratified subsample of 24{,}000 window examples (keeping the positive rate at 39.2\%) so the run stays tractable on a laptop. Training and validation losses fell smoothly (0.320$\to$0.261 train, 0.278$\to$0.257 validation over two epochs; Figure~\ref{fig:presloss}), and the two curves stayed close together, so we saw no sign of overfitting at this scale.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.62\textwidth]{presence_loss.png}
+\caption{Training and validation loss of the presence classifier.}
+\label{fig:presloss}
+\end{figure}
+
+\section{Span Extractor}
+The QA model trained on 8{,}000 focused-window examples for two epochs. Before training we decode the token-labelled spans back into text for a few examples and check they match the gold answers --- SQuAD-style pipelines make it very easy to get the character-to-token offset conversion silently wrong, and this small sanity check catches that.
+
+\section{Summarizer}
+\label{sec:sumtrain}
+FLAN-T5-small fine-tuned on 4{,}000 clause--template pairs in roughly eight minutes on CPU. The loss collapsed quickly (0.141$\to$0.085 train, 0.096$\to$0.075 validation; Figure~\ref{fig:sumloss}). In hindsight this rapid collapse was the first hint of the template-memorization behaviour we analyse in Chapter 6 --- with only 41 unique targets, the task is simply easy to fit.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.62\textwidth]{summarizer_loss.png}
+\caption{Fine-tuning loss of the FLAN-T5-small summarizer.}
+\label{fig:sumloss}
+\end{figure}
+
+\section{Engineering Notes: Training on Consumer Hardware}
+\label{sec:engineering}
+A few practical findings may save time for anyone reproducing this work on Apple-Silicon machines:
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{DeBERTa-v3 is unstable on MPS.} Our first-choice backbone produced NaN gradients on the MPS backend and was far too slow on CPU (about 89 seconds per step). We switched to DistilBERT; the method is unchanged, and on CUDA hardware the backbone string can simply be swapped back.
+  \item \textbf{MPS memory does not release in-process.} After two transformer trainings in the same session, the summarizer hit the MPS memory ceiling even after we deleted objects and emptied the cache. The fixes that actually work are restarting the kernel or training the (small) summarizer on CPU, which is what we did.
+  \item \textbf{API migration.} \texttt{transformers} 5.x renamed \texttt{Trainer(tokenizer=\dots)} to \texttt{processing\_class=\dots}. We also disabled mixed precision (\texttt{fp16=bf16=False}) and cast loss logits to fp32 for MPS dtype safety.
+  \item \textbf{Reproducibility.} Every artifact --- the split (\texttt{artifacts/split.json}), the fitted baseline (\texttt{artifacts/baseline.pkl}), and the three model checkpoints --- is saved to disk, and a standalone evaluation notebook regenerates every number in Chapter 6 from those files alone.
+\end{itemize}
+
+\section{Measured: What Sparse Attention Would Have Cost}
+\label{sec:lfbench}
+Section~\ref{sec:lit_long} argued against sparse attention partly on cost, and an argument from cost that never measures the cost is not worth much. Since the machine used for this thesis is the machine in question, the measurement is available for the price of running it, so we ran it.
+
+We instantiated Longformer-base at its published geometry --- 12 layers, 768 hidden units, 4{,}098 position embeddings, attention window 512, 148.7M parameters --- and timed a forward pass at 4{,}096 tokens and a full training step (forward, backward, AdamW update) against the DistilBERT configuration this thesis actually used. Weights are randomly initialized, which is legitimate here because time and memory depend on tensor shapes and not on the values in them. Each configuration ran in its own process so the peak Metal allocation reported belongs to that configuration alone. The machine is an Apple M4 with 16\,GB of unified memory, shared with the operating system. Table~\ref{tab:lfbench} reports the result.
+
+\begin{table}[ht]
+\centering
+\caption{Longformer-base against the DistilBERT configuration used here.}
+\label{tab:lfbench}
+\small
+\begin{tabular}{llccc}
+\toprule
+\textbf{Model} & \textbf{Operation} & \textbf{Batch} & \textbf{Time} & \textbf{Peak memory}\\
+\midrule
+Longformer-base (148.7M) & forward, 4{,}096 tok & 1 & 3.69\,s & 2.18\,GB\\
+DistilBERT (67.0M)       & forward, 256 tok     & 16 & 0.19\,s & 1.15\,GB\\
+\addlinespace
+Longformer-base & training step, 4{,}096 tok & 1 & 258\,s & 14.71\,GB\\
+Longformer-base & training step, 4{,}096 tok & 2 & 2{,}170\,s & 20.75\,GB\\
+DistilBERT      & training step, 256 tok     & 16 & 3.17\,s & 4.47\,GB\\
+\bottomrule
+\end{tabular}
+
+{\footnotesize\singlespacing \emph{Note.} Measured on the Apple M4 (16\,GB unified memory) that trained every model reported in this thesis.\par}
+\end{table}
+
+\textbf{The first thing this measurement does is correct us.} Section~\ref{sec:lit_long}'s original wording claimed that fine-tuning a Longformer at 4{,}096 tokens was ``far beyond a single laptop's memory budget''. That is not what happens. At batch size 1 it fits: 14.71\,GB on a 16\,GB machine. It is uncomfortably close to the ceiling --- that figure leaves under a gigabyte and a half for the operating system --- but the model, its gradients and its optimizer state all sit in memory and the step completes. We had asserted an impossibility that turns out to be a tight fit, and the assertion was wrong.
+
+\textbf{Where the memory claim does hold is one step further out.} At batch size 2 the requirement rises to 20.75\,GB, past the physical memory of the machine, and the consequence is visible in the timing: the step takes 2{,}170 seconds rather than the roughly 516 that doubling the batch would predict --- 8.4 times slower for twice the work, which is the signature of paging rather than computing. So the honest form of the claim is not ``it does not fit'' but ``it fits only at batch size 1, and any batch size a real training run would use does not''.
+
+\textbf{The binding constraint, though, is time, not memory.} At 258 seconds per step and batch size 1, reproducing our two-epoch presence schedule --- 22{,}800 training windows, 45{,}600 sample presentations --- would take roughly \textbf{136 days} of continuous compute. The DistilBERT run it replaces took 47 minutes. Even granting a generous allowance for kernel-compilation overhead in a short benchmark (our own DistilBERT step measures 3.17\,s here against about 1.0\,s sustained in the real run, so these figures should be read as upper bounds inflated by roughly threefold), the conclusion does not become sensitive to that correction: a third of 136 days is still 45 days, and the project had weeks, not months.
+
+\textbf{The inference-side objection also survives contact with a stopwatch.} Scanning one median contract (33{,}143 characters) for all 41 categories takes 22 windows $\times$ 41 $\times$ 11.7\,ms $\approx$ \textbf{10.6 seconds} with our DistilBERT, against 3 windows $\times$ 41 $\times$ 3.69\,s $\approx$ \textbf{454 seconds} --- seven and a half minutes --- with Longformer. Clausify's design target is a response in seconds, and this is the measurement that rules the alternative out for the deployed system regardless of what a training cluster could manage.
+
+None of this establishes that a Longformer would have scored worse; it establishes only that we could not have found out on this hardware, which is a different and much narrower claim than the one we started with. The comparison that would settle the modelling question needs a CUDA machine, and we list it in future work rather than pretending the cost argument answers it.
+

@@ -1,0 +1,105 @@
+\chapter{Literature Review}
+
+\section{Legal NLP and the CUAD Benchmark}
+Applying NLP to legal text is an old ambition, but for a long time progress was blocked by a simple problem: legal annotation needs lawyers, and lawyers are expensive. CUAD \cite{hendrycks2021cuad}, released at the NeurIPS 2021 Datasets and Benchmarks track by The Atticus Project \cite{atticus2021}, changed this. It provides 510 real commercial contracts, drawn from public SEC filings, in which experienced attorneys highlighted every span belonging to 41 clause categories that matter in corporate transactions --- governing law, non-compete, liability caps, IP assignment, and so on. The dataset ships in the SQuAD format \cite{rajpurkar2016squad}: each (contract, category) pair is posed as a question over the contract text, and the annotated clause spans are the answers, complete with character offsets.
+
+The original CUAD paper treats the task as extractive question answering and reports that performance scales strongly with model size; their best results come from DeBERTa models at the extra-large scale, and even those scores are modest, which says something about how hard legal clause extraction actually is. Two properties of CUAD end up dominating any modelling effort on it. The first is severe class imbalance: some categories appear in nearly every contract, while others show up barely a dozen times in the whole corpus. The second is document length. Contracts are far longer than a transformer's input limit, so every practical system has to answer the same question first: how does a model with a 512-token window read a 50{,}000-character contract?
+
+\section{Transformer Encoders and Model Distillation}
+The transformer architecture \cite{vaswani2017attention} replaced recurrence with self-attention, and BERT-style masked-language-model pre-training \cite{devlin2019bert} established the fine-tuning recipe this thesis depends on: take a model pre-trained on large general corpora, then adapt it to a downstream task with relatively little labelled data. This transfer-learning property matters a lot here, because 510 contracts is a small dataset by deep-learning standards.
+
+Since our compute budget is a single laptop, we use DistilBERT \cite{sanh2019distilbert}, a distilled six-layer version of BERT that keeps roughly 97\% of BERT's language-understanding ability while being 40\% smaller and 60\% faster. The published CUAD baselines use much larger models, so our backbone choice trades some headline accuracy for the ability to reproduce everything on ordinary hardware. We point out this scale difference wherever we interpret our results.
+
+\section{Long-Document Strategies and Multiple-Instance Learning}
+\label{sec:lit_long}
+The usual remedies for the length mismatch come in three families: (i) \emph{retrieval}, where a cheap scorer picks the few windows most likely to hold the answer and only those go to the transformer; (ii) \emph{sliding windows with aggregation}, where the model scores every window and the document-level prediction aggregates the window scores; and (iii) \emph{sparse-attention architectures} such as Longformer, which widen the input window directly.
+
+The third family deserves more than the one-line dismissal it usually gets, because ``too expensive'' is not on its own a reasoned argument. We did not run a Longformer experiment, so what follows is a design judgement, and we label it as one throughout rather than dressing it up as a finding; the one claim in it that can be checked cheaply on our own hardware --- the cost claim --- we did check, and Section~\ref{sec:lfbench} reports the measurement.
+
+Our reasoning had three parts, and only the third is about cost. \textbf{First, and decisively, we judged that it would not actually solve the problem.} Longformer extends the input window to 4{,}096 tokens. At roughly four characters per token, our median contract of 33{,}143 characters is about 8{,}300 tokens and the longest is about 85{,}000 --- so a Longformer would still see only half of a typical contract and a twentieth of the largest one. Sparse attention makes the window eight times wider; on this dataset it does not make it wide enough. We would still need windowing and an aggregation rule on top, which is precisely the design we ended up with anyway --- only with a backbone several times more expensive underneath it. This part of the argument is arithmetic about the dataset rather than an empirical result, but the arithmetic is not in doubt: the length problem in CUAD is an order of magnitude past what widening attention fixes.
+
+\textbf{Second, availability.} Our whole pipeline is built around distilled backbones so that it trains and serves on one laptop, and we are not aware of a distilled Longformer with the reliability and tooling support that DistilBERT has; adopting sparse attention would have meant giving up the distillation that makes the rest of the project reproducible.
+
+\textbf{Third, practical cost.} We judged fine-tuning a 148.7M-parameter Longformer at 4{,}096 tokens to be out of reach on a single Apple-Silicon laptop, and we were wary of custom attention kernels on a non-CUDA device after DeBERTa-v3 produced NaN gradients on the MPS backend (Section~\ref{sec:engineering}). We should flag immediately that when we finally measured this (Section~\ref{sec:lfbench}), the memory half of the judgement turned out to be \emph{wrong} --- a training step does fit at batch size 1 --- while the time half turned out to be right by a very large margin. We have left the reasoning as we made it and reported the correction where the measurement is, rather than quietly rewriting the premise to match the result. There is also an inference-side cost: \emph{Clausify} scores every window of an uploaded contract live for all 41 categories, and the interface is only usable if that finishes in seconds. Unlike the first two points, this one is measurable without training anything, so rather than assert it we benchmarked it --- Section~\ref{sec:lfbench} gives forward-pass latency and peak training-step memory for Longformer-base at 4{,}096 tokens on the machine this thesis was built on, next to the DistilBERT configuration we actually used.
+
+We note that on CUDA hardware with a larger memory budget the third objection would weaken and the second might disappear, while the first would still stand. This is therefore a design judgement grounded in one measurement and one piece of arithmetic, not a demonstration that sparse attention cannot work on CUAD --- a properly trained Longformer-with-windowing baseline remains a fair thing for a reader to ask for, and we list it in future work.
+
+Sliding windows aggregated with a maximum correspond to the classical \emph{multiple-instance learning} (MIL) setting: the document is a bag of window instances, the bag is positive if any instance is positive, and max-pooling implements exactly that rule. MIL has a well-known weakness that our experiments ended up confirming: false-positive inflation. With dozens of windows per document, the chance that \emph{some} window fires by accident grows with document length, and precision suffers.
+
+\section{Text-to-Text Models for Summarization}
+T5 \cite{raffel2020t5} reframes every NLP task as text-to-text, which fits clause simplification naturally: legal text goes in, a plain sentence comes out. FLAN-T5 \cite{chung2022flan} instruction-tunes T5 on a large mixture of tasks, so it gives usable zero-shot behaviour from a prompt as simple as ``summarize in plain English:''. We evaluate summaries with ROUGE-L \cite{lin2004rouge}, which measures the longest common subsequence against a reference. Chapter 6 shows why this metric has to be paired with actually reading the outputs when the reference set is small.
+
+\section{Legal Risk Assessment and Decision Support}
+\label{sec:lit_risk}
+The risk layer is the part of this thesis with the least literature behind it, and that is a gap in the work rather than a gap in the field. Because we are proposing to tell a non-lawyer which clauses to worry about, the obvious question is what basis exists for such a judgement, and the honest answer is that we did not build on an established framework --- we built a taxonomy ourselves (Section~\ref{sec:riskcriteria}) and are reporting it as a prototype for that reason.
+
+What the field does provide is context for why that is hard. Legal NLP benchmarks have largely operationalized ``risk'' indirectly, as classification into legally meaningful categories rather than as a severity judgement: LexGLUE \cite{chalkidis2022lexglue} assembles tasks such as judgement prediction and statutory classification, and LEGAL-BERT \cite{chalkidis2020legalbert} shows that domain-pretrained encoders help on them --- but none of these tasks asks a model how \emph{dangerous} a provision is for a particular signer. CUAD itself \cite{hendrycks2021cuad} is explicit that its categories are the clauses lawyers look for in due diligence, which encodes a professional judgement about importance without grading it.
+
+That leaves severity as a genuinely open construct, and it is worth being clear about why it resists a purely data-driven treatment. Risk in a contract is relational: the same uncapped indemnity is dangerous to the party granting it and valuable to the party receiving it, so a label is only meaningful once a perspective is fixed --- which is the problem Section~\ref{sec:weaker} confronts and resolves only by assumption. It is also contextual (a \$50{,}000 liability cap is trivial to a corporation and ruinous to a sole trader) and jurisdictional (a non-compete that binds in one jurisdiction is void in another). A per-category constant, which is what we implement, deliberately ignores all three.
+
+Two consequences for how our contribution should be read. First, the appropriate comparison for our taxonomy is not a published risk model --- we are not aware of an established one covering CUAD's 41 categories --- but expert judgement, which is exactly the validation Section~\ref{sec:taxvalid} says has not been obtained. Second, work on explainability in legal AI argues that decision support in this domain should expose its reasoning rather than emit a score. Our lookup table is unusually well suited to that: every assignment carries a written justification and can be contested line by line (Appendix~\ref{app:taxonomy}). That transparency is the honest strength of the design, and it is a different property from being correct.
+
+\section{Plain-Language Legal Communication}
+\label{sec:lit_plain}
+Chapter~6 finds that our summarizer does not summarize, and the literature relevant to that finding is about \emph{simplification}, not about T5. The distinction matters: summarization compresses, whereas simplification re-expresses the same content in more accessible language --- and for a contract clause, compression is largely the wrong operation, since the conditions and exceptions that a summary would drop are frequently the parts that determine what the clause does.
+
+The most directly comparable work is Manor and Li \cite{manor2019plain}, which assembles plain-English summaries of contract sections and observes that models trained on them tend toward generic output --- an early version of the failure our template pilot quantifies. Readability measurement has a much older tradition \cite{flesch1948}, and it supplies something our evaluation lacks entirely: a way to check that the output is actually easier to read, rather than merely shorter. We report no readability statistic anywhere, which in hindsight is an omission, since the entire claim of the component is accessibility.
+
+The deeper methodological point this literature makes, and which our results illustrate, is that reference-based metrics measure the reference set. With 41 unique targets, ROUGE-L rewards recognising the category. Section~\ref{sec:summ} turns that into a measurement by varying the reference set and holding everything else fixed.
+
+\section{Faithfulness and Hallucination in Generated Summaries}
+\label{sec:lit_faith}
+For a system that puts generated sentences next to a user's own contract, factual correctness of the generation is a safety property, not a quality metric. The summarization literature has established that fluent abstractive output is routinely unfaithful to its source: Maynez et al.\ \cite{maynez2020faithfulness} find that a large fraction of generated summaries contain content not supported by the input, and that ROUGE correlates poorly with faithfulness judgements; Kry\'{s}ci\'{n}ski et al.\ \cite{kryscinski2020factcc} propose evaluating factual consistency as a task in its own right. Embedding-based metrics such as BERTScore \cite{zhang2020bertscore} improve on n-gram overlap for semantic similarity but do not test factuality either.
+
+This bears on our system in a way worth stating precisely, because the shape of our failure is unusual. A template-emitting model \textbf{cannot hallucinate in the ordinary sense}: it can only produce one of 41 human-written sentences, all of which are factually sound descriptions of their category. In exchange, it fails in the complementary way --- it is uninformative about the specific clause, and when it selects the wrong template (30\% of the time, Section~\ref{sec:summ}) the output is fluent, confident and about a different provision entirely. That is arguably a \emph{worse} failure mode for a legal assistant than a hallucinated detail, because it is undetectable from the output alone: the sentence is well formed and internally correct, and only comparison against the clause reveals it does not describe it.
+
+It also means our evaluation is missing the checks this literature calls for. We report ROUGE-L against two reference sets and read outputs by hand. We do not report BERTScore, any entailment-based faithfulness check, or a human judgement of whether the legal meaning survives --- and for a component that will be shown to non-lawyers, the last of these is the one that matters. Section~8.3 lists it.
+
+\section{Gap Addressed by This Thesis}
+Existing CUAD work stops at locating clauses. A signer plausibly needs more than that: which clauses matter, how much, and what they mean in plain language. This thesis attempts that layer --- a prototype per-category risk taxonomy, category-template plain-English text, and a demonstration application --- while also re-examining, on a strict held-out evaluation, the common assumption that a transformer must beat classical lexical methods at the document-level presence decision. We should say at the outset that of the three added components, the empirical results support only the first as a working artefact and neither of the other two as a solved problem; what the added layer contributes is largely a measurement of how far it is from working.
+
+Table~\ref{tab:related} places this work beside the reference points above along the dimensions that separate them. Two differences are worth reading off it directly. The obvious one is scope: prior work ends at the span, whereas the output here is a risk-ranked, plain-English report, which is the part a non-lawyer can actually act on. The less obvious one is in the long-document column. Every system on CUAD has to make a choice about document length, but that choice is normally asserted; here it was measured before any training happened --- the retrieval ceiling of 64.0\% in Section~\ref{sec:ceiling} is what ruled retrieval out and sent us to multiple-instance learning. Note also what the backbone column costs us: our distilled models are roughly an order of magnitude smaller than CUAD's DeBERTa-v3-XL, so our absolute extraction scores are not comparable to theirs, and we do not present them as such.
+
+\begin{table}[!ht]
+\centering
+\caption{Related work on legal-document NLP.}
+\label{tab:related}
+\scriptsize
+\setlength{\tabcolsep}{2.5pt}
+\renewcommand{\arraystretch}{1.2}
+\newcolumntype{R}[1]{>{\raggedright\arraybackslash}p{#1}}
+\begin{tabular}{@{}R{17mm} R{13mm} R{16mm} R{16mm} R{18mm} R{11mm} R{13mm} R{17mm}@{}}
+\toprule
+\textbf{Work} & \textbf{Dataset} & \textbf{Task} & \textbf{Model} & \textbf{Long-doc method} & \textbf{Risk} & \textbf{Plain lang.} & \textbf{Evaluation}\\
+\midrule
+Hendrycks et al.\ \cite{hendrycks2021cuad}
+ & CUAD (510) & Span extraction & DeBERTa-v3-XL & Full-doc QA, large model & No & No & Held-out; precision @ 80\% recall\\
+\addlinespace
+Chalkidis et al.\ \cite{chalkidis2020legalbert}
+ & Multiple legal corpora & Domain pretraining $+$ classification & LEGAL-BERT & 512-token truncation & No & No & Per-task held-out\\
+\addlinespace
+Chalkidis et al.\ \cite{chalkidis2022lexglue}
+ & LexGLUE (7 tasks) & Legal language understanding benchmark & BERT/RoBERTa family & Task-dependent & Indirect (task labels) & No & Benchmark, multi-task\\
+\addlinespace
+Manor \& Li \cite{manor2019plain}
+ & TL;DR-Legal style & Plain-English summarization & Seq2seq & Section-level inputs & No & \textbf{Yes} & ROUGE $+$ manual\\
+\addlinespace
+Beltagy et al.\ \cite{beltagy2020longformer}
+ & Long-doc benchmarks & Architecture & Longformer & Sparse attention, 4{,}096 tok & No & No & Task benchmarks\\
+\addlinespace
+Retrieval--QA pipelines (generic)
+ & Varies & Span extraction & Varies & Retrieval $+$ reader (ceiling usually assumed) & No & No & Varies\\
+\midrule
+\textbf{This thesis}
+ & \textbf{CUAD (510)}
+ & \textbf{Presence $+$ span $+$ category risk $+$ template text}
+ & \textbf{DistilBERT $+$ FLAN-T5-small}
+ & \textbf{MIL sliding window; ceiling \emph{measured}, sparse attention \emph{benchmarked}}
+ & \textbf{Category-level (prototype, unvalidated)}
+ & \textbf{Template} (not abstractive)
+ & \textbf{Contract-level held-out; cluster bootstrap; seed, budget, split controls; \emph{end-to-end}}\\
+\bottomrule
+\end{tabular}
+
+{\footnotesize\singlespacing \emph{Note.} ``Long-doc method'' is how each work handles inputs longer than the encoder window; ``Evaluation'' notes the level at which results are reported.\par}
+\end{table}

@@ -1,0 +1,92 @@
+\chapter{Introduction}
+
+\section{Background and Motivation}
+Almost everything people and businesses do together runs on contracts, but actually reading them is a luxury. A typical agreement in our dataset has a median length of about 33{,}000 characters --- roughly 5{,}000 words --- and the longest one crosses 338{,}000 characters. Somewhere inside all that text sit the provisions that really matter: who owns newly created intellectual property, whether liability has a ceiling, whether the contract quietly renews itself, whether one party is banned from competing after it ends. Getting a lawyer to review such a document takes hours and costs money that individuals and small businesses often do not have. So people sign contracts they have not fully understood, and carry risks they never saw.
+
+The Contract Understanding Atticus Dataset (CUAD) \cite{hendrycks2021cuad} was built to help automate this kind of review. It contains 510 real commercial contracts in which legal experts highlighted every clause belonging to 41 categories that matter in corporate transactions. The annotation effort alone is said to be worth around two million US dollars of attorney time. But CUAD frames the problem purely as extraction: given a category, find the clause text. Once it finds a clause labelled ``Uncapped Liability,'' it stops. There is no warning about what that clause means for the signer, no plain-language explanation, and no check of how clauses interact.
+
+Our project tries to close that gap. On top of clause detection and extraction, we add a prototype taxonomy that assigns every \emph{category} a High, Medium or Low level from the weaker party's point of view, and a text-generation component intended to render each clause as a single plain-English sentence. We packaged the whole pipeline into \emph{Clausify}, a prototype web application where a user pastes or uploads a contract and gets back a risk-prioritized clause report. Both added layers turned out to be weaker than we expected --- the taxonomy is unvalidated (Section~\ref{sec:taxvalid}) and the generation component learned to emit category templates rather than clause-specific summaries (Section~\ref{sec:summ}) --- and Chapters 6 and 8 report that rather than the intention.
+
+\section{System at a Glance}
+Before the detailed treatment in Chapter 4, Figure~\ref{fig:overview} gives the shape of the whole system in one picture. The system answers three questions about a contract in order --- \emph{what is in it}, \emph{where is it}, and \emph{what does it mean} --- and only the first two are what CUAD was built to benchmark. The third stage, shaded, is what this thesis adds.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+  node distance=6mm,
+  box/.style={draw, rounded corners=2pt, minimum height=19mm, text width=25mm,
+              align=center, font=\small, fill=blue!6},
+  new/.style={box, fill=orange!15},
+  arr/.style={-{Stealth[length=2.5mm]}, thick}
+]
+\node[box] (a) {\textbf{Contract}\\[2pt]{\scriptsize raw text}\\{\scriptsize median 33k chars}};
+\node[box, right=of a] (b) {\textbf{What is in it?}\\[2pt]{\scriptsize presence over}\\{\scriptsize 41 categories}};
+\node[box, right=of b] (c) {\textbf{Where is it?}\\[2pt]{\scriptsize exact clause}\\{\scriptsize text extracted}};
+\node[new, right=of c] (d) {\textbf{What does it mean?}\\[2pt]{\scriptsize risk level +}\\{\scriptsize plain English}};
+\draw[arr] (a) -- (b);
+\draw[arr] (b) -- (c);
+\draw[arr] (c) -- (d);
+
+\draw[decorate, decoration={brace, mirror, amplitude=4pt}]
+  ($(b.south west)+(0,-1.5mm)$) -- ($(c.south east)+(0,-1.5mm)$)
+  node[midway, below=4pt, font=\scriptsize\itshape] {CUAD's original task};
+\draw[decorate, decoration={brace, mirror, amplitude=4pt}]
+  ($(d.south west)+(0,-1.5mm)$) -- ($(d.south east)+(0,-1.5mm)$)
+  node[midway, below=4pt, font=\scriptsize\itshape] {added here};
+\end{tikzpicture}
+\caption{The three questions the pipeline answers about a contract.}
+\label{fig:overview}
+\end{figure}
+
+\section{Problem Statement}
+Concretely, the thesis works on four connected problems:
+\begin{enumerate}[itemsep=2pt]
+  \item \textbf{Presence classification.} For each of the 41 CUAD categories, decide whether a given contract contains at least one clause of that category. The main technical obstacle here is length: contracts are roughly 16$\times$ longer than the input window of a standard transformer encoder.
+  \item \textbf{Span extraction.} For every category judged present, locate the exact clause text inside the contract. We formulate this as extractive question answering in the style of SQuAD \cite{rajpurkar2016squad}.
+  \item \textbf{Plain-language summarization.} Rewrite each extracted clause as one sentence that a non-lawyer can understand.
+  \item \textbf{Risk communication.} Attach a category-level risk level and a one-line reason to every detected clause, so the output reads as a prioritized report rather than a list of quotations. Whether this is genuinely useful to a signer is a usability question we did not evaluate (Section~\ref{sec:threats}).
+\end{enumerate}
+
+\section{Research Questions}
+\label{sec:rqs}
+The objectives below operationalize five questions, which the rest of the thesis is organized to answer. We state them here with the answer we arrived at, so a reader can check each claim against the evidence rather than hunt for it.
+
+\begin{description}[itemsep=4pt, leftmargin=1.6cm]
+  \item[RQ1] \emph{Can a sliding-window transformer outperform a full-document lexical baseline at clause-presence classification on long contracts?}\\
+  \textbf{No.} The baseline wins by $+0.081$ micro-F1, and the gap survives training on the full window set (Section~\ref{sec:budget}) and three random seeds (Section~\ref{sec:seeds}). Answered in Chapter 6.
+  \item[RQ2] \emph{How accurately can the system extract clause spans from long contracts?}\\
+  Token-F1 0.763 (95\% CI $[0.740, 0.782]$) \emph{when handed a window containing the clause}, but 0.386 when the window is chosen by the presence stage (Sections~\ref{sec:span} and~\ref{sec:e2e}).
+  \item[RQ3] \emph{Does the summarization component produce genuinely clause-specific plain-English output?}\\
+  \textbf{No.} It reproduces one of 41 pre-written category templates verbatim on every input; against clause-specific references it scores no better than the template with no model at all (Section~\ref{sec:summ}).
+  \item[RQ4] \emph{How do errors propagate across the complete pipeline?}\\
+  Multiplicatively and worse than the components suggest: 21.7\% of gold clauses survive all three stages against the $\approx$64\% the component scores predict (Section~\ref{sec:e2e}).
+  \item[RQ5] \emph{Does category-level risk prioritization align the system's errors with what would harm a signer?}\\
+  \textbf{No, and it currently works against it.} The configuration we report as the headline misses 37.5\% of High-risk clauses, while the component we describe as weaker misses 15.9\% (Section~\ref{sec:riskeval}). Aggregate micro-F1 and user harm point in different directions.
+\end{description}
+
+Three of these five answers are negative. We report them as the results of the thesis rather than as shortcomings of it: each is a measurement that a reader of the component scores alone would have got wrong.
+
+\section{Research Objectives}
+\begin{itemize}[itemsep=2pt]
+  \item Build and honestly evaluate a full three-model CUAD pipeline on consumer hardware, using an 80/20 contract-level train/test split so that every reported number comes from genuinely unseen contracts.
+  \item Check whether a windowed transformer actually beats a strong classical baseline for document-level presence classification, instead of assuming that it does.
+  \item Measure span-extraction quality with token-level F1 and exact match on the held-out test set.
+  \item Evaluate the summarizer against two different reference sets, because we found a single automatic metric measures its reference set rather than the task.
+  \item Measure what survives the pipeline end to end, rather than reporting only stage-wise scores.
+  \item Deploy the trained models in a working demonstration application with a risk-prioritized interface.
+\end{itemize}
+
+\section{Contributions}
+The main contributions of this work are:
+\begin{enumerate}[itemsep=2pt]
+  \item \textbf{A prototype category-level risk taxonomy for CUAD.} A High/Medium/Low level with a written justification for each of the 41 categories, scored from the weaker party's perspective (8 High, 22 Medium, 11 Low), together with explicit assignment criteria (Section~\ref{sec:riskcriteria}). We present it as an \emph{initial framework intended for expert validation}, not as a validated legal-risk model: it was authored by the three of us, none of whom has legal training, and as of this writing no legal professional has reviewed it (Section~\ref{sec:taxvalid}). It attaches risk to a \emph{category}, not to the wording of a particular clause, and we call it category-level risk prioritization throughout for that reason.
+  \item \textbf{An empirical result on long-document presence classification, with its alternative explanations tested.} A full-document TF--IDF baseline (micro-F1 0.775) turned out to be hard to beat. Our windowed DistilBERT loses to it (0.694), and we checked the two obvious excuses: retraining on all 53{,}662 window examples instead of 24{,}000 changed the score by $-0.0004$, and across three random seeds the gap is 9.5 standard deviations wide. An AND-ensemble nominally finishes first (0.776), but both a paired cluster bootstrap and the ensemble's own seed variance show that margin is indistinguishable from zero, so we report the ensemble for its error profile rather than its rank.
+  \item \textbf{An end-to-end measurement of error compounding.} Evaluating the three stages in series rather than in isolation shows that only 21.7\% of gold clauses survive the whole pipeline, against the roughly 64\% the component scores predict, and localizes the loss to a window-selection failure and a train/inference mismatch --- both fixable without a larger model.
+  \item \textbf{A demonstration that a small template set turns summarization into classification.} Evaluating the same 150 held-out clauses against our 41 category templates and against clause-specific references drops ROUGE-L from 0.775 to 0.116, and the fine-tuned model is shown to emit a template verbatim on 100\% of inputs.
+  \item \textbf{A methodological guardrail: measure the ceiling before training.} We show that question-guided retrieval windowing caps attainable recall at 64\%, and we used that one measurement to reject the whole retrieval approach before spending any training time on it.
+  \item \textbf{A reproducible, laptop-scale pipeline.} All three models train on a single Apple-Silicon laptop. The split, the trained weights, and a standalone evaluation notebook are all saved, so every number in this thesis can be regenerated from disk.
+  \item \textbf{Clausify}, a prototype web application that runs the trained models live and presents the results grouped by risk. It is a demonstration of the pipeline, not an evaluated tool: no usability study was conducted, and Section~\ref{sec:demolimits} records what it does not do well.
+\end{enumerate}
+
+\section{Thesis Organization}
+Chapter 2 reviews the related literature. Chapter 3 describes the dataset, the preprocessing, and the exploratory analysis that shaped our design choices. Chapter 4 presents the methodology for all pipeline stages. Chapter 5 covers model training, and Chapter 6 reports the held-out test evaluation, including the confusion-matrix analysis. Chapter 7 describes the Clausify application. Chapter 8 concludes and discusses future work. The appendices contain the full 41-category risk taxonomy and the repository layout.
